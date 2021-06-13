@@ -1,0 +1,7 @@
+click
+click_shell
+colorama
+mongoengine
+pymongo
+pyperclip
+requests
