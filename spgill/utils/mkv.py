@@ -13,6 +13,9 @@ exports._mkvtoolnix = None
 exports._ffmpeg = None
 
 
+print("WARNING: The 'spgill.utils.mkv' module is deprecated!", file=sys.stderr)
+
+
 def set_path(mkvpath, ffpath):
     """Set the path for the mkvtoolnix suite."""
     exports._mkvtoolnix = Path(mkvpath)
