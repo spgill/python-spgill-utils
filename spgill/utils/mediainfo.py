@@ -99,6 +99,8 @@ class MediaFile(object):
 
         # Normalize the path into a path object
         self.path = pathlib.Path(path).expanduser().absolute()
+        if not self.path.is_file():
+            raise RuntimeError(f"'{path}' is not a valid file path!")
 
         # Start by reading the file and decoding the JSON
         rawInfo = mediainfo(["--output=JSON", self.path])
