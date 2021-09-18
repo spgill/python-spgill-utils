@@ -29,6 +29,7 @@ class MediaTrackType(enum.Enum):
     Video = "Video"
     Audio = "Audio"
     Subtitles = "Text"
+    Chapters = "Menu"
 
 
 class MediaTrack(types.SimpleNamespace):
