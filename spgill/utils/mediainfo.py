@@ -18,6 +18,10 @@ def castYesNo(value: str) -> bool:
     return value.lower() == "yes"
 
 
+def convertToZeroIndex(value: str) -> int:
+    return int(value) - 1
+
+
 class MediaTrackType(enum.Enum):
     """Enum representing the type of content in the media track."""
 
@@ -51,7 +55,7 @@ class MediaTrack(types.SimpleNamespace):
         "framecount": int,
         "framerate": float,
         "height": int,
-        "id": int,
+        "id": convertToZeroIndex,
         "isstreamable": castYesNo,
         "overallbitrate": int,
         "pixelaspectratio": float,
