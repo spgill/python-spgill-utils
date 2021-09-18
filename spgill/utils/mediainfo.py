@@ -2,6 +2,7 @@
 import enum
 import pathlib
 import json
+import shlex
 import types
 import typing
 
@@ -11,6 +12,7 @@ import sh
 
 # Commands
 mediainfo = sh.Command("mediainfo")
+mkvextract = sh.Command("mkvextract")
 
 
 # Cast methods
@@ -75,7 +77,13 @@ class MediaTrack(types.SimpleNamespace):
         "width": int,
     }
 
-    def __init__(self, **kwargs: typing.Union[str, int, float]) -> None:
+    def __init__(
+        self,
+        container: "MediaFile",
+        /,
+        **kwargs: typing.Union[str, int, float],
+    ) -> None:
+        self.container = container
 
         # Sanitize all field names
         kwargs = {
@@ -95,6 +103,27 @@ class MediaTrack(types.SimpleNamespace):
             return super().__getattribute__(name.lower())
         return None
 
+    def extract(self, path: pathlib.Path, fg: bool = True):
+        """
+        Use mkvextract to extract this track into a separate file.
+
+        *CURRENTLY ONLY WORKS WITH MKV CONTAINERS*
+        """
+        # Double check the parent container is mkv
+        if self.container.meta.format != "Matroska":
+            raise RuntimeError(
+                f"Parent container of type '{self.container.meta.format}' is not supported by extract method."
+            )
+
+        return mkvextract(
+            [
+                self.container.path,
+                "tracks",
+                f"{self.id}:{shlex.quote(str(path))}",
+            ],
+            _fg=fg,
+        )
+
 
 class MediaFile(object):
     """Object representing a single media container file."""
@@ -113,7 +142,7 @@ class MediaFile(object):
 
         # Get a list of tracks from the info, and convert into MediaTrack objects
         trackList = [
-            MediaTrack(**track)
+            MediaTrack(self, **track)
             for track in self.info.get("media", {}).get("track", [])
         ]
 
