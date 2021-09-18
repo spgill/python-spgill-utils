@@ -94,11 +94,11 @@ class MediaTrack(types.SimpleNamespace):
 class MediaFile(object):
     """Object representing a single media container file."""
 
-    def __init__(self, path: typing.Union[pathlib.Path, str]) -> None:
+    def __init__(self, path: pathlib.Path) -> None:
         super().__init__()
 
-        # Normalize the path into a path object
-        self.path = pathlib.Path(path).expanduser().absolute()
+        # Check that the path is valid
+        self.path = path.absolute()
         if not self.path.is_file():
             raise RuntimeError(f"'{path}' is not a valid file path!")
 
