@@ -28,10 +28,10 @@ class MediaTrackType(enum.Enum):
     """Enum representing the type of content in the media track."""
 
     Metadata = "General"
+    Chapters = "Menu"
     Video = "Video"
     Audio = "Audio"
     Subtitles = "Text"
-    Chapters = "Menu"
 
 
 class MediaTrack(types.SimpleNamespace):
@@ -141,21 +141,19 @@ class MediaFile(object):
         self.info = json.loads(rawInfo.stdout)
 
         # Get a list of tracks from the info, and convert into MediaTrack objects
-        trackList = [
+        self.tracks = [
             MediaTrack(self, **track)
             for track in self.info.get("media", {}).get("track", [])
         ]
 
         # Separate the meta info ('General' track) into its own object, if it exists
-        self.meta: typing.Union[MediaTrack, None] = None
-        for track in trackList:
+        self.meta: typing.Optional[MediaTrack] = None
+        self.chapters: typing.Optional[MediaTrack] = None
+        for track in self.tracks:
             if track.type is MediaTrackType.Metadata:
                 self.meta = track
-                break
+                self.tracks.remove(track)
+            elif track.type is MediaTrackType.Chapters:
+                self.chapters = track
+                self.tracks.remove(track)
 
-        # Now, split all non-meta tracks into the tracks list
-        self.tracks = tuple(
-            track
-            for track in trackList
-            if track.type is not MediaTrackType.Metadata
-        )
