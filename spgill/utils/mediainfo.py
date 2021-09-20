@@ -16,11 +16,11 @@ mkvextract = sh.Command("mkvextract")
 
 
 # Cast methods
-def castYesNo(value: str) -> bool:
+def _castYesNo(value: str) -> bool:
     return value.lower() == "yes"
 
 
-def convertToZeroIndex(value: str) -> int:
+def _convertToZeroIndex(value: str) -> int:
     return int(value) - 1
 
 
@@ -45,21 +45,21 @@ class MediaTrack(types.SimpleNamespace):
         "bitrate": int,
         "buffersize": int,
         "channels": int,
-        "colour_description_present": castYesNo,
-        "default": castYesNo,
+        "colour_description_present": _castYesNo,
+        "default": _castYesNo,
         "delay": float,
         "displayaspectratio": float,
         "duration": float,
         "elementcount": int,
         "filesize": int,
-        "forced": castYesNo,
-        "format_settings_cabac": castYesNo,
+        "forced": _castYesNo,
+        "format_settings_cabac": _castYesNo,
         "format_settings_refframes": int,
         "framecount": int,
         "framerate": float,
         "height": int,
-        "id": convertToZeroIndex,
-        "isstreamable": castYesNo,
+        "id": _convertToZeroIndex,
+        "isstreamable": _castYesNo,
         "overallbitrate": int,
         "pixelaspectratio": float,
         "sampled_height": int,
