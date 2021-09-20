@@ -38,6 +38,7 @@ class MergeGlobalOptions(typing.TypedDict, total=False):
 class MergeContainerOptions(typing.TypedDict, total=False):
     noChapters: bool
     noAttachments: bool
+    noGlobalTags: bool
 
 
 class MergeTrackOptions(typing.TypedDict, total=False):
@@ -127,6 +128,9 @@ class MergeJob:
 
         if containerOptions.get("noAttachments", False):
             arguments.append("--no-attachments")
+
+        if containerOptions.get("noGlobalTags", False):
+            arguments.append("--no-global-tags")
 
         return arguments + [container.path]
 
