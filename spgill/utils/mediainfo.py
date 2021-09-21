@@ -2,7 +2,6 @@
 import enum
 import pathlib
 import json
-import shlex
 import types
 import typing
 
@@ -120,7 +119,7 @@ class MediaTrack(types.SimpleNamespace):
             [
                 self.container.path,
                 "tracks",
-                f"{self.id}:{shlex.quote(str(path))}",
+                f"{self.id}:{path}",
             ],
             _fg=fg,
         )

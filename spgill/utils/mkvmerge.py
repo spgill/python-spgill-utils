@@ -1,7 +1,6 @@
 ### stdlib imports
 import operator
 import pathlib
-import shlex
 import typing
 
 ### vendor imports
@@ -146,7 +145,7 @@ class MergeJob:
         value: str = ""
 
         if isinstance(flagValue, str):
-            value = shlex.quote(flagValue)
+            value = flagValue
         elif isinstance(flagValue, bool):
             value = str(int(flagValue))
 
