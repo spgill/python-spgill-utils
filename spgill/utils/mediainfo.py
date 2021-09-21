@@ -91,6 +91,11 @@ class MediaTrack(types.SimpleNamespace):
             for key, value in kwargs.items()
         }
 
+        # If there is no track id, create one. This happens in "one track" container
+        # like standalone SubRip files.
+        if "id" not in kwargs:
+            kwargs["id"] = 0
+
         # Iterate through each field and process them through the appropriate cast method
         for key in kwargs:
             if castMethod := self._fieldCastMap.get(key.lower(), None):
