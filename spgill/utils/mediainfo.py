@@ -15,6 +15,21 @@ mediainfo = sh.Command("mediainfo")
 mkvextract = sh.Command("mkvextract")
 
 
+def guessSubtitleCharset(
+    path: pathlib.Path, ignoreLowConfidence: bool = False
+) -> str:
+    """Guess the charset of a subtitle file. MUST be a text subtitle file."""
+    with path.open("rb") as handle:
+        results = charset_normalizer.detect(handle.read())
+
+    # If confidence is less than half, abort (should not happen)
+    if results["confidence"] <= 0.5 and not ignoreLowConfidence:
+        print(f"ERROR: Lack of confidence detecting charset for '{path}'")
+        exit(1)
+
+    return results["encoding"]
+
+
 # Cast methods
 def _castYesNo(value: str) -> bool:
     return value.lower() == "yes"
@@ -163,16 +178,28 @@ class MediaFile(object):
                 self.tracks.remove(track)
 
 
-def guessSubtitleCharset(
-    path: pathlib.Path, ignoreLowConfidence: bool = False
-) -> str:
-    """Guess the charset of a subtitle file. MUST be a text subtitle file."""
-    with path.open("rb") as handle:
-        results = charset_normalizer.detect(handle.read())
+class SRTFile(MediaFile):
+    """
+    SRT files are tricky to deal with. They aren't always detected as valid media
+    containers. Using this special class will make them easier to work with.
+    """
 
-    # If confidence is less than half, abort (should not happen)
-    if results["confidence"] <= 0.5 and not ignoreLowConfidence:
-        print(f"ERROR: Lack of confidence detecting charset for '{path}'")
-        exit(1)
+    def __init__(self, path: pathlib.Path) -> None:
+        super().__init__(path)
 
-    return results["encoding"]
+        # If the subtitle track was not detected, generate a fake one.
+        if len(self.tracks) == 0:
+            self.tracks.append(
+                MediaTrack(
+                    self,
+                    **{
+                        "@type": "Text",
+                        "ID": "1",
+                        "UniqueID": str(hash(str(path))),
+                        "Format": guessSubtitleCharset(path),
+                        "CodecID": "S_TEXT/UTF8",
+                        "Default": "Yes",
+                        "Forced": "No",
+                    },
+                )
+            )
