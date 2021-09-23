@@ -157,7 +157,7 @@ class MergeJob:
         arguments: list[str] = []
 
         for optionKey, optionValue in options.items():
-            if argName := _trackArgMap.get(optionKey, None):
+            if (argName := _trackArgMap.get(optionKey, None)) is not None:
                 arguments += self._formatTrackFlag(track, argName, optionValue)
 
         return arguments
