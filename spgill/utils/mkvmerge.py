@@ -113,6 +113,31 @@ class MergeJob:
             if track.type in self._acceptedTrackTypes:
                 self.addTrack(track, options)
 
+    def autoAssignDefaultTracks(self):
+        """Go through all source tracks and assign default flags automatically."""
+        defaultsFoundByLanguage: dict[
+            str, dict[mediainfo.MediaTrackType, bool]
+        ] = {}
+        for track, trackOptions in self._tracks:
+            if trackOptions.get("forced", None) is True or (
+                trackOptions.get("forced", None) is None and track.forced
+            ):
+                trackOptions["default"] = False
+                continue
+            trackLanguage = (
+                trackOptions.get("language", None) or track.language or "und"
+            )
+            if trackLanguage not in defaultsFoundByLanguage:
+                defaultsFoundByLanguage[trackLanguage] = {
+                    mediainfo.MediaTrackType.Video: True,
+                    mediainfo.MediaTrackType.Audio: True,
+                    mediainfo.MediaTrackType.Subtitles: True,
+                }
+            trackOptions["default"] = defaultsFoundByLanguage[trackLanguage][
+                track.type
+            ]
+            defaultsFoundByLanguage[trackLanguage][track.type] = False
+
     def _generateGlobalArguments(self) -> list[str, pathlib.Path]:
         arguments: list[str, pathlib.Path] = ["-o", self.output]
         return arguments
