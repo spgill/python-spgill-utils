@@ -54,6 +54,7 @@ MergeTrackEntry = tuple[mediainfo.MediaTrack, MergeTrackOptions]
 # Mapping of `MergeTrackOptions` to their respective CLI arguments
 _trackArgMap: dict[str, str] = {
     "name": "--track-name",
+    "title": "--track-name",  # "title" is also valid for track name
     "charset": "--sub-charset",
     "default": "--default-track",
     "forced": "--forced-track",
