@@ -94,9 +94,9 @@ class MergeJob:
         self, source: info.MediaTrack, options: MergeTrackOptions = {}
     ) -> None:
         """Add a new source track to the output, with options."""
-        if source.type not in self._acceptedTrackTypes:
+        if source.Type not in self._acceptedTrackTypes:
             raise RuntimeError(
-                f"Track type of '{source.type}' is not support as a mux source."
+                f"Track type of '{source.Type}' is not support as a mux source."
             )
         self._tracks.append((source, options))
 
@@ -110,7 +110,7 @@ class MergeJob:
         in the `MergeJob._acceptedTrackTypes` class attribute.
         """
         for track in source.tracks:
-            if track.type in self._acceptedTrackTypes:
+            if track.Type in self._acceptedTrackTypes:
                 self.addTrack(track, options)
 
     def autoAssignDefaultTracks(self):
@@ -120,12 +120,12 @@ class MergeJob:
         ] = {}
         for track, trackOptions in self._tracks:
             if trackOptions.get("forced", None) is True or (
-                trackOptions.get("forced", None) is None and track.forced
+                trackOptions.get("forced", None) is None and track.Forced
             ):
                 trackOptions["default"] = False
                 continue
             trackLanguage = (
-                trackOptions.get("language", None) or track.language or "und"
+                trackOptions.get("language", None) or track.Language or "und"
             )
             if trackLanguage not in defaultsFoundByLanguage:
                 defaultsFoundByLanguage[trackLanguage] = {
@@ -134,9 +134,9 @@ class MergeJob:
                     info.MediaTrackType.Subtitles: True,
                 }
             trackOptions["default"] = defaultsFoundByLanguage[trackLanguage][
-                track.type
+                track.Type
             ]
-            defaultsFoundByLanguage[trackLanguage][track.type] = False
+            defaultsFoundByLanguage[trackLanguage][track.Type] = False
 
     def _generateGlobalArguments(self) -> list[str, pathlib.Path]:
         arguments: list[str, pathlib.Path] = ["-o", self.output]
@@ -175,7 +175,7 @@ class MergeJob:
         elif isinstance(flagValue, bool):
             value = str(int(flagValue))
 
-        return [flagName, f"{track.id}:{value}"]
+        return [flagName, f"{track.ID}:{value}"]
 
     def _generateTrackArguments(
         self, track: info.MediaTrack, options: MergeTrackOptions
@@ -214,7 +214,7 @@ class MergeJob:
                 trackType: [
                     entry
                     for entry in trackEntries
-                    if entry[0].type is trackType
+                    if entry[0].Type is trackType
                 ]
                 for trackType in _argsByTrackType
             }
@@ -229,7 +229,7 @@ class MergeJob:
                     continue
                 arguments += [
                     selectKey,
-                    ",".join([str(track.id) for track, _ in trackEntries]),
+                    ",".join([str(track.ID) for track, _ in trackEntries]),
                 ]
                 for track, trackOptions in trackEntries:
                     arguments += self._generateTrackArguments(
@@ -244,7 +244,7 @@ class MergeJob:
         orderEntries: list[str] = []
         for track in absoluteTrackOrder:
             fileId = containerOrder.index(track.container)
-            orderEntries.append(f"{fileId}:{track.id}")
+            orderEntries.append(f"{fileId}:{track.ID}")
         arguments += ["--track-order", ",".join(orderEntries)]
 
         # Prepend the global arguments
