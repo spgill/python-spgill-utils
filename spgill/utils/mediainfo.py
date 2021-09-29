@@ -196,7 +196,7 @@ class SRTFile(MediaFile):
                         "@type": "Text",
                         "ID": "1",
                         "UniqueID": str(hash(str(path))),
-                        "Format": guessSubtitleCharset(path),
+                        "Format": "SubRip",
                         "CodecID": "S_TEXT/UTF8",
                         "Default": "Yes",
                         "Forced": "No",
