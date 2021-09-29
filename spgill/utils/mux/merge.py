@@ -7,23 +7,23 @@ import typing
 import sh
 
 ### local imports
-import spgill.utils.mux.mediainfo as mediainfo
+import spgill.utils.mux.info as info
 
 
 # Commands
 mkvmerge = sh.Command("mkvmerge")
 
 
-_argsByTrackType: dict[mediainfo.MediaTrackType, typing.Any] = {
-    mediainfo.MediaTrackType.Video: {
+_argsByTrackType: dict[info.MediaTrackType, typing.Any] = {
+    info.MediaTrackType.Video: {
         "select": "--video-tracks",
         "exclude": "--no-video",
     },
-    mediainfo.MediaTrackType.Audio: {
+    info.MediaTrackType.Audio: {
         "select": "--audio-tracks",
         "exclude": "--no-audio",
     },
-    mediainfo.MediaTrackType.Subtitles: {
+    info.MediaTrackType.Subtitles: {
         "select": "--subtitle-tracks",
         "exclude": "--no-subtitles",
     },
@@ -48,7 +48,7 @@ class MergeTrackOptions(typing.TypedDict, total=False):
     language: str
 
 
-MergeTrackEntry = tuple[mediainfo.MediaTrack, MergeTrackOptions]
+MergeTrackEntry = tuple[info.MediaTrack, MergeTrackOptions]
 
 
 # Mapping of `MergeTrackOptions` to their respective CLI arguments
@@ -64,10 +64,10 @@ _trackArgMap: dict[str, str] = {
 
 class MergeJob:
     # List of track types accepted as mux sources
-    _acceptedTrackTypes: list[mediainfo.MediaTrackType] = [
-        mediainfo.MediaTrackType.Video,
-        mediainfo.MediaTrackType.Audio,
-        mediainfo.MediaTrackType.Subtitles,
+    _acceptedTrackTypes: list[info.MediaTrackType] = [
+        info.MediaTrackType.Video,
+        info.MediaTrackType.Audio,
+        info.MediaTrackType.Subtitles,
     ]
 
     def __init__(self, output: pathlib.Path) -> None:
@@ -76,7 +76,7 @@ class MergeJob:
         # Create instance variables
         self._globalOptions: MergeGlobalOptions = {}
         self._containerOptions: dict[
-            mediainfo.MediaFile, MergeContainerOptions
+            info.MediaFile, MergeContainerOptions
         ] = {}
         self._tracks: list[MergeTrackEntry] = []
 
@@ -85,13 +85,13 @@ class MergeJob:
         self._globalOptions = options
 
     def setContainerOptions(
-        self, source: mediainfo.MediaFile, options: MergeContainerOptions
+        self, source: info.MediaFile, options: MergeContainerOptions
     ) -> None:
         """Set the options for a source container."""
         self._containerOptions[source] = options
 
     def addTrack(
-        self, source: mediainfo.MediaTrack, options: MergeTrackOptions = {}
+        self, source: info.MediaTrack, options: MergeTrackOptions = {}
     ) -> None:
         """Add a new source track to the output, with options."""
         if source.type not in self._acceptedTrackTypes:
@@ -101,7 +101,7 @@ class MergeJob:
         self._tracks.append((source, options))
 
     def addAllTracks(
-        self, source: mediainfo.MediaFile, options: MergeTrackOptions = {}
+        self, source: info.MediaFile, options: MergeTrackOptions = {}
     ) -> None:
         """
         Quickly add all tracks from a media file to the output.
@@ -116,7 +116,7 @@ class MergeJob:
     def autoAssignDefaultTracks(self):
         """Go through all source tracks and assign default flags automatically."""
         defaultsFoundByLanguage: dict[
-            str, dict[mediainfo.MediaTrackType, bool]
+            str, dict[info.MediaTrackType, bool]
         ] = {}
         for track, trackOptions in self._tracks:
             if trackOptions.get("forced", None) is True or (
@@ -129,9 +129,9 @@ class MergeJob:
             )
             if trackLanguage not in defaultsFoundByLanguage:
                 defaultsFoundByLanguage[trackLanguage] = {
-                    mediainfo.MediaTrackType.Video: True,
-                    mediainfo.MediaTrackType.Audio: True,
-                    mediainfo.MediaTrackType.Subtitles: True,
+                    info.MediaTrackType.Video: True,
+                    info.MediaTrackType.Audio: True,
+                    info.MediaTrackType.Subtitles: True,
                 }
             trackOptions["default"] = defaultsFoundByLanguage[trackLanguage][
                 track.type
@@ -143,7 +143,7 @@ class MergeJob:
         return arguments
 
     def _generateContainerArguments(
-        self, container: mediainfo.MediaFile
+        self, container: info.MediaFile
     ) -> list[str, pathlib.Path]:
         arguments: list[str, pathlib.Path] = []
         containerOptions = self._containerOptions.get(container, {})
@@ -161,7 +161,7 @@ class MergeJob:
 
     def _formatTrackFlag(
         self,
-        track: mediainfo.MediaTrack,
+        track: info.MediaTrack,
         flagName: str,
         flagValue: typing.Union[None, str, bool],
     ) -> list[str]:
@@ -178,7 +178,7 @@ class MergeJob:
         return [flagName, f"{track.id}:{value}"]
 
     def _generateTrackArguments(
-        self, track: mediainfo.MediaTrack, options: MergeTrackOptions
+        self, track: info.MediaTrack, options: MergeTrackOptions
     ):
         arguments: list[str] = []
 
@@ -192,12 +192,12 @@ class MergeJob:
         arguments: list[str, pathlib.Path] = []
 
         # We need to track order of tracks and source containers
-        absoluteTrackOrder: list[mediainfo.MediaTrack] = []
-        containerOrder: list[mediainfo.MediaFile] = []
+        absoluteTrackOrder: list[info.MediaTrack] = []
+        containerOrder: list[info.MediaFile] = []
 
         # We first need to group all of the source tracks by their container file
         tracksByContainer: dict[
-            mediainfo.MediaFile,
+            info.MediaFile,
             list[MergeTrackEntry],
         ] = {}
         for entry in self._tracks:
@@ -210,9 +210,7 @@ class MergeJob:
         # Iterate through each source container and generate all arguments
         for container, trackEntries in tracksByContainer.items():
             # Sort the tracks by type
-            tracksByType: dict[
-                mediainfo.MediaTrackType, list[MergeTrackEntry]
-            ] = {
+            tracksByType: dict[info.MediaTrackType, list[MergeTrackEntry]] = {
                 trackType: [
                     entry
                     for entry in trackEntries
