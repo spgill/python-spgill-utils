@@ -7,7 +7,7 @@ import typing
 import sh
 
 ### local imports
-import spgill.utils.mediainfo as mediainfo
+import spgill.utils.mux.mediainfo as mediainfo
 
 
 # Commands
