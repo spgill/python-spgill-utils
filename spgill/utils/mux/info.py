@@ -36,7 +36,7 @@ def _castYesNo(value: str) -> bool:
 
 
 def _convertToZeroIndex(value: str) -> int:
-    return int(value) - 1
+    return max(int(value) - 1, 0)
 
 
 class MediaTrackType(enum.Enum):
