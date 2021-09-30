@@ -118,10 +118,10 @@ class EditJob:
     ) -> list[str]:
         if value is None:
             return ["--delete", key]
-        if isinstance(value, (str, int)):
-            return ["--set", f"{key}={value}"]
-        if isinstance(value, bool):
+        elif isinstance(value, bool):
             return ["--set", f"flag-{key}={int(value)}"]
+        elif isinstance(value, (str, int)):
+            return ["--set", f"{key}={value}"]
 
     def _generateContainerArguments(self) -> list[str]:
         arguments: list[str] = (
