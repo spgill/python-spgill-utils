@@ -274,6 +274,18 @@ class MediaFile(object):
                 self.chapters = track
                 self.tracks.remove(track)
 
+        # Generate list of tracks grouped by type
+        self.tracksByType: dict[MediaTrackType, list[MediaTrack]] = {
+            trackType: [
+                track for track in self.tracks if track.Type is trackType
+            ]
+            for trackType in [
+                MediaTrackType.Video,
+                MediaTrackType.Audio,
+                MediaTrackType.Subtitles,
+            ]
+        }
+
 
 class SRTFile(MediaFile):
     """
