@@ -194,7 +194,12 @@ class MediaTrack:
             if (
                 castMethod := self._castMethodMap.get(key, None)
             ) and value is not None:
-                setattr(self, key, castMethod(value))
+                try:
+                    setattr(self, key, castMethod(value))
+                except ValueError:
+                    raise ValueError(
+                        f"Error casting value of field '{key}' using method '{castMethod}'. Value in container '{self.container.path}' is '{value}'"
+                    )
 
     def __repr__(self) -> str:
         return f"MediaTrack(Type={repr(self.Type)}, TypeOrder={repr(self.TypeOrder)}, ID={repr(self.ID)}, CodecID={repr(self.CodecID)}, Name={repr(self.Title)}, ...)"
