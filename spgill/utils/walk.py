@@ -1,4 +1,19 @@
-def walk(top, topdown=False, followlinks=False):
+### stdlib imports
+import pathlib
+import typing
+
+
+def walk(
+    top: pathlib.Path, topDown: bool = False, followLinks: bool = False
+) -> typing.Generator[
+    tuple[
+        pathlib.Path,
+        typing.Generator[pathlib.Path, None, None],
+        typing.Generator[pathlib.Path, None, None],
+    ],
+    None,
+    None,
+]:
     """
     See Python docs for os.walk, exact same behavior but it yields Path() instances instead
 
@@ -9,13 +24,13 @@ def walk(top, topdown=False, followlinks=False):
     dirs = (node for node in names if node.is_dir() is True)
     nondirs = (node for node in names if node.is_dir() is False)
 
-    if topdown:
+    if topDown:
         yield top, dirs, nondirs
 
     for name in dirs:
-        if followlinks or name.is_symlink() is False:
-            for x in walk(name, topdown, followlinks):
+        if followLinks or name.is_symlink() is False:
+            for x in walk(name, topDown, followLinks):
                 yield x
 
-    if topdown is not True:
+    if topDown is not True:
         yield top, dirs, nondirs
