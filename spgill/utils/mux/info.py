@@ -72,7 +72,7 @@ class MediaTrack:
     BitRate_Maximum: typing.Optional[int] = None
     BitRate_Mode: typing.Optional[str] = None
     BitRate_Nominal: typing.Optional[int] = None
-    BufferSize: typing.Optional[int] = None
+    BufferSize: typing.Optional[str] = None
     ChannelLayout: typing.Optional[str] = None
     ChannelPositions: typing.Optional[str] = None
     Channels: typing.Optional[int] = None
@@ -156,7 +156,6 @@ class MediaTrack:
         "BitRate": int,
         "BitRate_Maximum": int,
         "BitRate_Nominal": int,
-        "BufferSize": int,
         "Channels": int,
         "Default": _castYesNo,
         "Delay": float,
