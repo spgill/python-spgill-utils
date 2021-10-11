@@ -113,7 +113,7 @@ class MergeJob:
             if track.Type in self._acceptedTrackTypes:
                 self.addTrack(track, options)
 
-    def autoAssignDefaultTracks(self):
+    def autoAssignDefaultFlags(self):
         """Go through all source tracks and assign default flags automatically."""
         defaultsFoundByLanguage: dict[
             str, dict[info.MediaTrackType, bool]
