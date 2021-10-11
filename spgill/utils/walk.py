@@ -1,36 +1,61 @@
 ### stdlib imports
+from collections.abc import Iterable
 import pathlib
-import typing
 
 
 def walk(
-    top: pathlib.Path, topDown: bool = False, followLinks: bool = False
-) -> typing.Generator[
+    top: pathlib.Path,
+    /,
+    topDown: bool = False,
+    followLinks: bool = False,
+    sort: bool = False,
+    reverse: bool = False,
+) -> Iterable[
     tuple[
         pathlib.Path,
-        typing.Generator[pathlib.Path, None, None],
-        typing.Generator[pathlib.Path, None, None],
-    ],
-    None,
-    None,
+        Iterable[pathlib.Path],
+        Iterable[pathlib.Path],
+    ]
 ]:
     """
-    See Python docs for os.walk, exact same behavior but it yields Path() instances instead
+    Traverse a directory structure, yielding files and directories along the way.
+
+    Nearly identical in usage to standard library `os.walk`. Primary difference
+    is that `pathlib.Path` instances are yielded instead of strings, as well as
+    the addition of sorting-related arguments.
+
+    `sort` argument will sort the the directories and files before yielding them.
+    Word of warning, this does slightly change execution, as it has to resolve all
+    generators to lists before yielding results. Could potentially slow down
+    execution on VERY large file structures. Use `reverse` argument to reverse the
+    sort order.
 
     Adapted from http://ominian.com/2016/03/29/os-walk-for-pathlib-path/
     """
-    names = list(top.iterdir())
+    topIterator = top.iterdir()
+    if sort:
+        topIterator = sorted(topIterator, reverse=reverse)
 
-    dirs = (node for node in names if node.is_dir() is True)
-    nondirs = (node for node in names if node.is_dir() is False)
+    dirs = (node for node in topIterator if node.is_dir() is True)
+    nondirs = (node for node in topIterator if node.is_dir() is False)
+
+    if sort:
+        dirs = sorted(dirs, reverse=reverse)
+        nondirs = sorted(nondirs, reverse=reverse)
 
     if topDown:
         yield top, dirs, nondirs
 
     for name in dirs:
         if followLinks or name.is_symlink() is False:
-            for x in walk(name, topDown, followLinks):
+            for x in walk(
+                name,
+                topDown=topDown,
+                followLinks=followLinks,
+                sort=sort,
+                reverse=reverse,
+            ):
                 yield x
 
-    if topDown is not True:
+    if not topDown:
         yield top, dirs, nondirs
