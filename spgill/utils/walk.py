@@ -32,7 +32,7 @@ def walk(
 
     Adapted from http://ominian.com/2016/03/29/os-walk-for-pathlib-path/
     """
-    topIterator = top.iterdir()
+    topIterator = list(top.iterdir())
     if sort:
         topIterator = sorted(topIterator, reverse=reverse)
 
