@@ -1,9 +1,0 @@
-charset_normalizer
-click
-click_shell
-colorama
-mongoengine
-pymongo
-pyperclip
-requests
-sh

@@ -1,3 +1,3 @@
-FROM python:3.9-slim-buster
+FROM python:3.10-slim-buster
 COPY . /tmp
 WORKDIR /tmp
