@@ -208,12 +208,15 @@ class MediaTrack:
         """
         Use mkvextract to extract this track into a separate file.
 
-        *CURRENTLY ONLY WORKS WITH MKV CONTAINERS*
+        If you want to extract more than one track from a single container,
+        you can use the `MediaFile.extractTracks` method to do it in one go.
+
+        *ONLY WORKS WITH MKV CONTAINERS*
         """
         # Double check the parent container is mkv
         if self.container.meta.Format != "Matroska":
             raise RuntimeError(
-                f"Parent container of type '{self.container.meta.format}' is not supported by extract method."
+                f"Parent container of type '{self.container.meta.Format}' is not supported by extract method."
             )
 
         return mkvextract(
@@ -289,6 +292,34 @@ class MediaFile(object):
                 MediaTrackType.Subtitles,
             ]
         }
+
+    def extractTracks(self, tracks: list[tuple[MediaTrack, pathlib.Path]]):
+        """
+        Extract one or many tracks from this container.
+
+        *ONLY WORKS WITH MKV CONTAINERS*
+        """
+        # Double check this container is mkv
+        if self.meta.Format != "Matroska":
+            raise RuntimeError(
+                f"Parent container of type '{self.meta.Format}' is not supported by extract method."
+            )
+
+        extractArgs: list[typing.Union[pathlib.Path, str]] = [
+            self.path,
+            "tracks",
+        ]
+
+        for trackObj, trackPath in tracks:
+            # Double check the track belongs to this container
+            if trackObj.container is not self:
+                raise RuntimeError(
+                    "You passed a track to `extractTracks` that does not belong to the container."
+                )
+
+            extractArgs.append(f"{trackObj.ID}:{trackPath}")
+
+        mkvextract(*extractArgs, _fg=True)
 
 
 class SRTFile(MediaFile):
