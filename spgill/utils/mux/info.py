@@ -310,6 +310,26 @@ class MediaFile(object):
 
         mkvextract(*extractArgs, _fg=fg)
 
+    def extractChapters(
+        self, path: pathlib.Path, simple: bool = False, fg: bool = True
+    ):
+        """
+        Extract container chapters to a file.
+
+        Despite the possibility of there being more than one chapter "track",
+        this extract method will always produce ONE file.
+
+        *ONLY WORKS WITH MKV CONTAINERS*
+        """
+        # Double check this container is mkv
+        if self.meta.Format != "Matroska":
+            raise RuntimeError(
+                f"Parent container of type '{self.meta.Format}' is not supported by extract method."
+            )
+
+        # Run the extract command
+        mkvextract(*[path, "chapters", "--simple" if simple else ""], _fg=fg)
+
 
 class SRTFile(MediaFile):
     """
