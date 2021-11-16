@@ -271,14 +271,14 @@ class MediaFile(object):
             self.tracks.append(MediaTrack(self, **acceptedFields))
 
         # Separate the meta info ('General' track) into its own object, if it exists
-        self.meta: typing.Optional[MediaTrack] = None
-        self.chapters: typing.Optional[MediaTrack] = None
+        self.meta: MediaTrack = None
+        self.chapters: list[MediaTrack] = []
         for track in self.tracks:
             if track.Type is MediaTrackType.Metadata:
                 self.meta = track
                 self.tracks.remove(track)
             elif track.Type is MediaTrackType.Chapters:
-                self.chapters = track
+                self.chapters.append(track)
                 self.tracks.remove(track)
 
         # Generate list of tracks grouped by type
