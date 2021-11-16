@@ -140,6 +140,8 @@ class MergeJob:
 
     def _generateGlobalArguments(self) -> list[str, pathlib.Path]:
         arguments: list[str, pathlib.Path] = ["-o", self.output]
+        if "title" in self._globalOptions:
+            arguments += ["--title", self._globalOptions["title"]]
         return arguments
 
     def _generateContainerArguments(
