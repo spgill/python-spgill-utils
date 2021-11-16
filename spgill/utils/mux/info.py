@@ -213,20 +213,7 @@ class MediaTrack:
 
         *ONLY WORKS WITH MKV CONTAINERS*
         """
-        # Double check the parent container is mkv
-        if self.container.meta.Format != "Matroska":
-            raise RuntimeError(
-                f"Parent container of type '{self.container.meta.Format}' is not supported by extract method."
-            )
-
-        return mkvextract(
-            [
-                self.container.path,
-                "tracks",
-                f"{self.ID}:{path}",
-            ],
-            _fg=fg,
-        )
+        self.container.extractTracks([(self, path)], fg)
 
 
 class MediaFile(object):
@@ -293,7 +280,9 @@ class MediaFile(object):
             ]
         }
 
-    def extractTracks(self, tracks: list[tuple[MediaTrack, pathlib.Path]]):
+    def extractTracks(
+        self, tracks: list[tuple[MediaTrack, pathlib.Path]], fg: bool = True
+    ):
         """
         Extract one or many tracks from this container.
 
@@ -314,12 +303,12 @@ class MediaFile(object):
             # Double check the track belongs to this container
             if trackObj.container is not self:
                 raise RuntimeError(
-                    "You passed a track to `extractTracks` that does not belong to the container."
+                    "You passed a track to `extractTracks` that does not belong to this container."
                 )
 
             extractArgs.append(f"{trackObj.ID}:{trackPath}")
 
-        mkvextract(*extractArgs, _fg=True)
+        mkvextract(*extractArgs, _fg=fg)
 
 
 class SRTFile(MediaFile):
