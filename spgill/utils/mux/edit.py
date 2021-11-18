@@ -8,6 +8,7 @@ import sh
 
 ### local imports
 import spgill.utils.mux.info as info
+import spgill.utils.mux.merge as merge
 
 
 # Commands
@@ -141,6 +142,21 @@ class EditJob:
         else:
             self._trackOptions[track] = options
 
+    def getTrackOptions(
+        self,
+        track: info.MediaTrack,
+    ) -> EditTrackOptions:
+        return self._trackOptions.get(track, {})
+
+    def updateTrackOptions(
+        self,
+        track: info.MediaTrack,
+        options: EditTrackOptions,
+    ) -> None:
+        if track not in self._trackOptions:
+            self._trackOptions[track] = {}
+        self._trackOptions[track].update(options)
+
     def _generateTrackArguments(self) -> list[str, pathlib.Path]:
         arguments: list[str] = []
         for track, options in self._trackOptions.items():
@@ -158,6 +174,19 @@ class EditJob:
             *self._generateContainerArguments(),
             *self._generateTrackArguments(),
         ]
+
+    def autoAssignDefaultFlags(self):
+        """Iterate through the tracks in the container and re-assign default flags."""
+        # Use a merge job and its method to do the logic (so I'm not duplicating it)
+        tempMerge = merge.MergeJob(pathlib.Path("-"))
+        tempMerge.addAllTracks(self._container)
+        tempMerge.autoAssignDefaultFlags()
+
+        # Unpack the track options from the merge object into this edit job
+        for track, trackOptions in tempMerge._tracks:
+            self.updateTrackOptions(
+                track, typing.cast(EditTrackOptions, trackOptions)
+            )
 
     def run(self, fg: bool = True) -> sh.RunningCommand:
         """Execute the header edit operation now."""
