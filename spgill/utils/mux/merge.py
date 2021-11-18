@@ -111,7 +111,7 @@ class MergeJob:
         """
         for track in source.tracks:
             if track.Type in self._acceptedTrackTypes:
-                self.addTrack(track, options)
+                self.addTrack(track, options.copy())
 
     def autoAssignDefaultFlags(self):
         """Go through all source tracks and assign default flags automatically."""
