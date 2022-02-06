@@ -46,6 +46,7 @@ class MergeTrackOptions(typing.TypedDict, total=False):
     default: bool
     forced: bool
     language: str
+    reduceToCore: bool
 
 
 MergeTrackEntry = tuple[info.MediaTrack, MergeTrackOptions]
@@ -59,6 +60,7 @@ _trackArgMap: dict[str, str] = {
     "default": "--default-track",
     "forced": "--forced-track",
     "language": "--language",
+    "reduceToCore": "--reduce-to-core",
 }
 
 
