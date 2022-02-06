@@ -29,6 +29,39 @@ _argsByTrackType: dict[info.MediaTrackType, typing.Any] = {
     },
 }
 
+# region Flag formatter functions
+ArgInputValue = typing.Union[str, bool]
+ArgFormatterMethod = typing.Callable[[int, ArgInputValue], list[str]]
+ArgFormatterFactory = typing.Callable[[str], ArgFormatterMethod]
+
+
+def argFormatterNameIdColonString(argName: str) -> ArgFormatterMethod:
+    return lambda id, val: [argName, f"{id}:{val}"]
+
+
+def argFormatterNameIdColonBoolean(argName: str) -> ArgFormatterMethod:
+    return lambda id, val: [argName, f"{id}:{int(val)}"]
+
+
+def argFormatterNameId(argName: str) -> ArgFormatterMethod:
+    return lambda id, val: [argName, str(id)] if val else []
+
+
+# endregion
+
+# Mapping of `MergeTrackOptions` to their respective CLI arguments
+_trackArgMap: dict[str, ArgFormatterMethod] = {
+    "name": argFormatterNameIdColonString("--track-name"),
+    "title": argFormatterNameIdColonString(
+        "--track-name"
+    ),  # "title" is also valid for track name
+    "language": argFormatterNameIdColonString("--language"),
+    "charset": argFormatterNameIdColonString("--sub-charset"),
+    "default": argFormatterNameIdColonBoolean("--default-track"),
+    "forced": argFormatterNameIdColonBoolean("--forced-track"),
+    "reduceToCore": argFormatterNameId("--reduce-to-core"),
+}
+
 
 class MergeGlobalOptions(typing.TypedDict, total=False):
     title: str
@@ -50,18 +83,6 @@ class MergeTrackOptions(typing.TypedDict, total=False):
 
 
 MergeTrackEntry = tuple[info.MediaTrack, MergeTrackOptions]
-
-
-# Mapping of `MergeTrackOptions` to their respective CLI arguments
-_trackArgMap: dict[str, str] = {
-    "name": "--track-name",
-    "title": "--track-name",  # "title" is also valid for track name
-    "charset": "--sub-charset",
-    "default": "--default-track",
-    "forced": "--forced-track",
-    "language": "--language",
-    "reduceToCore": "--reduce-to-core",
-}
 
 
 class MergeJob:
@@ -163,32 +184,16 @@ class MergeJob:
 
         return arguments + [container.path]
 
-    def _formatTrackFlag(
-        self,
-        track: info.MediaTrack,
-        flagName: str,
-        flagValue: typing.Union[None, str, bool],
-    ) -> list[str]:
-        if flagValue is None:
-            return [flagName]
-
-        value: str = ""
-
-        if isinstance(flagValue, str):
-            value = flagValue
-        elif isinstance(flagValue, bool):
-            value = str(int(flagValue))
-
-        return [flagName, f"{track.ID}:{value}"]
-
     def _generateTrackArguments(
         self, track: info.MediaTrack, options: MergeTrackOptions
     ):
         arguments: list[str] = []
 
         for optionKey, optionValue in options.items():
-            if (argName := _trackArgMap.get(optionKey, None)) is not None:
-                arguments += self._formatTrackFlag(track, argName, optionValue)
+            if formatter := _trackArgMap.get(optionKey, None):
+                if optionValue is None:
+                    optionValue = ""
+                arguments += formatter(track.ID, optionValue)
 
         return arguments
 
