@@ -1,4 +1,5 @@
 ### stdlib imports
+import base64
 import dataclasses
 import enum
 import pathlib
@@ -191,6 +192,11 @@ class MediaTrack:
     def __post_init__(self) -> None:
         # Iterate through all defined fields and and cast to the correct type
         for key, value in dataclasses.asdict(self).items():
+            # Some long string values may be base64 encoded by mediainfo
+            if isinstance(value, dict) and "@dt" in value:
+                value = base64.b64decode(value["#value"]).decode()
+                setattr(self, key, value)
+
             if (
                 castMethod := self._castMethodMap.get(key, None)
             ) and value is not None:
