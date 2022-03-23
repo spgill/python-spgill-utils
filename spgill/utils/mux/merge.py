@@ -121,7 +121,7 @@ class MergeJob:
             raise RuntimeError(
                 f"Track type of '{source.Type}' is not support as a mux source."
             )
-        self._tracks.append((source, options))
+        self._tracks.append((source, options.copy()))
 
     def addAllTracks(
         self, source: info.MediaFile, options: MergeTrackOptions = {}
