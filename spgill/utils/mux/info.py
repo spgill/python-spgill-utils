@@ -208,7 +208,7 @@ class MediaTrack:
                     )
 
     def __repr__(self) -> str:
-        return f"MediaTrack(Type={repr(self.Type)}, TypeOrder={repr(self.TypeOrder)}, ID={repr(self.ID)}, CodecID={repr(self.CodecID)}, Name={repr(self.Title)}, ...)"
+        return f"MediaTrack(Type={repr(self.Type)}, TypeOrder={repr(self.TypeOrder)}, ID={repr(self.ID)}, CodecID={repr(self.CodecID)}, Name={repr(self.Title)}, Default={repr(self.Default)}, Forced={repr(self.Forced)}, ...)"
 
     def extract(self, path: pathlib.Path, fg: bool = True):
         """
