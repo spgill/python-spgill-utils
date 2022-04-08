@@ -112,6 +112,12 @@ class MediaTrack:
     FrameRate_Mode: typing.Optional[str] = None
     FrameRate_Mode_Original: typing.Optional[str] = None
     FrameRate_Original: typing.Optional[float] = None
+    HDR_Format: typing.Optional[str] = None
+    HDR_Format_Version: typing.Optional[str] = None
+    HDR_Format_Profile: typing.Optional[str] = None
+    HDR_Format_Level: typing.Optional[str] = None
+    HDR_Format_Settings: typing.Optional[str] = None
+    HDR_Format_Compatibility: typing.Optional[str] = None
     Height: typing.Optional[int] = None
     Interleave_Duration: typing.Optional[float] = None
     Interleave_Preload: typing.Optional[float] = None
