@@ -69,55 +69,55 @@ class MediaTrack:
     AlternateGroup: typing.Optional[int] = None
     AudioCount: typing.Optional[int] = None
     BitDepth: typing.Optional[int] = None
-    BitRate: typing.Optional[int] = None
     BitRate_Maximum: typing.Optional[int] = None
     BitRate_Mode: typing.Optional[str] = None
     BitRate_Nominal: typing.Optional[int] = None
+    BitRate: typing.Optional[int] = None
     BufferSize: typing.Optional[str] = None
     ChannelLayout: typing.Optional[str] = None
     ChannelPositions: typing.Optional[str] = None
     Channels: typing.Optional[int] = None
     ChromaSubsampling: typing.Optional[str] = None
-    CodecID: typing.Optional[str] = None
     CodecID_Compatible: typing.Optional[str] = None
+    CodecID: typing.Optional[str] = None
     ColorSpace: typing.Optional[str] = None
     Compression_Mode: typing.Optional[str] = None
     Default: typing.Optional[bool] = None
-    Delay: typing.Optional[float] = None
     Delay_Original: typing.Optional[float] = None
     Delay_Source: typing.Optional[str] = None
+    Delay: typing.Optional[float] = None
     DisplayAspectRatio: typing.Optional[str] = None
     Duration: typing.Optional[float] = None
     ElementCount: typing.Optional[int] = None
     Encoded_Application: typing.Optional[str] = None
     Encoded_Date: typing.Optional[str] = None
-    Encoded_Library: typing.Optional[str] = None
     Encoded_Library_Date: typing.Optional[str] = None
     Encoded_Library_Name: typing.Optional[str] = None
     Encoded_Library_Settings: typing.Optional[str] = None
     Encoded_Library_Version: typing.Optional[str] = None
+    Encoded_Library: typing.Optional[str] = None
+    File_Modified_Date_Local: typing.Optional[str] = None
+    File_Modified_Date: typing.Optional[str] = None
     FileExtension: typing.Optional[str] = None
     FileSize: typing.Optional[int] = None
-    File_Modified_Date: typing.Optional[str] = None
-    File_Modified_Date_Local: typing.Optional[str] = None
     Forced: typing.Optional[bool] = None
-    Format: typing.Optional[str] = None
     Format_AdditionalFeatures: typing.Optional[str] = None
     Format_Commercial_IfAny: typing.Optional[str] = None
     Format_Level: typing.Optional[str] = None
     Format_Profile: typing.Optional[str] = None
     Format_Version: typing.Optional[str] = None
+    Format: typing.Optional[str] = None
     FrameCount: typing.Optional[int] = None
-    FrameRate: typing.Optional[float] = None
-    FrameRate_Mode: typing.Optional[str] = None
     FrameRate_Mode_Original: typing.Optional[str] = None
+    FrameRate_Mode: typing.Optional[str] = None
     FrameRate_Original: typing.Optional[float] = None
-    HDR_Format: typing.Optional[str] = None
-    HDR_Format_Version: typing.Optional[str] = None
-    HDR_Format_Profile: typing.Optional[str] = None
-    HDR_Format_Level: typing.Optional[str] = None
-    HDR_Format_Settings: typing.Optional[str] = None
+    FrameRate: typing.Optional[float] = None
     HDR_Format_Compatibility: typing.Optional[str] = None
+    HDR_Format_Level: typing.Optional[str] = None
+    HDR_Format_Profile: typing.Optional[str] = None
+    HDR_Format_Settings: typing.Optional[str] = None
+    HDR_Format_Version: typing.Optional[str] = None
+    HDR_Format: typing.Optional[str] = None
     Height: typing.Optional[int] = None
     Interleave_Duration: typing.Optional[float] = None
     Interleave_Preload: typing.Optional[float] = None
@@ -126,8 +126,8 @@ class MediaTrack:
     IsStreamable: typing.Optional[bool] = None
     Language: typing.Optional[str] = None
     MuxingMode: typing.Optional[str] = None
-    OverallBitRate: typing.Optional[int] = None
     OverallBitRate_Mode: typing.Optional[str] = None
+    OverallBitRate: typing.Optional[int] = None
     PixelAspectRatio: typing.Optional[float] = None
     Sampled_Height: typing.Optional[int] = None
     Sampled_Width: typing.Optional[int] = None
@@ -139,8 +139,8 @@ class MediaTrack:
     ServiceKind: typing.Optional[str] = None
     Standard: typing.Optional[str] = None
     Stored_Height: typing.Optional[int] = None
-    StreamSize: typing.Optional[int] = None
     StreamSize_Proportion: typing.Optional[float] = None
+    StreamSize: typing.Optional[int] = None
     Tagged_Date: typing.Optional[str] = None
     TextCount: typing.Optional[int] = None
     TimeCode_FirstFrame: typing.Optional[str] = None
@@ -160,20 +160,20 @@ class MediaTrack:
         "AlternateGroup": int,
         "AudioCount": int,
         "BitDepth": int,
-        "BitRate": int,
         "BitRate_Maximum": int,
         "BitRate_Nominal": int,
+        "BitRate": int,
         "Channels": int,
         "Default": _castYesNo,
-        "Delay": float,
         "Delay_Original": float,
+        "Delay": float,
         "Duration": float,
         "ElementCount": int,
         "FileSize": int,
         "Forced": _castYesNo,
         "FrameCount": int,
-        "FrameRate": float,
         "FrameRate_Original": float,
+        "FrameRate": float,
         "Height": int,
         "Interleave_Duration": float,
         "Interleave_Preload": float,
@@ -188,8 +188,8 @@ class MediaTrack:
         "SamplingCount": int,
         "SamplingRate": int,
         "Stored_Height": int,
-        "StreamSize": int,
         "StreamSize_Proportion": float,
+        "StreamSize": int,
         "TextCount": int,
         "VideoCount": int,
         "Width": int,
