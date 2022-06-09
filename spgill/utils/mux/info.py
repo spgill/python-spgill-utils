@@ -128,6 +128,10 @@ class MediaTrack:
     Interleaved: typing.Optional[bool] = None
     IsStreamable: typing.Optional[bool] = None
     Language: typing.Optional[str] = None
+    MasteringDisplay_ColorPrimaries_Source: typing.Optional[str] = None
+    MasteringDisplay_ColorPrimaries: typing.Optional[str] = None
+    MasteringDisplay_Luminance_Source: typing.Optional[str] = None
+    MasteringDisplay_Luminance: typing.Optional[str] = None
     MuxingMode: typing.Optional[str] = None
     OverallBitRate_Mode: typing.Optional[str] = None
     OverallBitRate: typing.Optional[int] = None
