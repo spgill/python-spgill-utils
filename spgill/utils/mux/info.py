@@ -353,10 +353,10 @@ class MediaFile(object):
 class SRTFile(MediaFile):
     """
     SRT files are tricky to deal with. They aren't always detected as valid media
-    containers. Using this special class will make them easier to work with.
+    containers. Using this special class will make their behavior more consistent.
     """
 
-    def __init__(self, path: pathlib.Path) -> None:
+    def __init__(self, path: pathlib.Path, language: str = "en") -> None:
         super().__init__(path)
 
         # If the subtitle track was not detected, generate a fake one.
@@ -364,14 +364,13 @@ class SRTFile(MediaFile):
             self.tracks.append(
                 MediaTrack(
                     self,
-                    **{
-                        "Type": "Text",
-                        "ID": "1",
-                        "UniqueID": str(hash(str(path))),
-                        "Format": "SubRip",
-                        "CodecID": "S_TEXT/UTF8",
-                        "Default": "Yes",
-                        "Forced": "No",
-                    },
+                    ID=1,
+                    UniqueID=str(hash(str(path))),
+                    Type=MediaTrackType.Subtitles,
+                    Format="SubRip",
+                    CodecID="S_TEXT/UTF8",
+                    Language=language,
+                    Default=True,
+                    Forced=False,
                 )
             )
