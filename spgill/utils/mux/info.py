@@ -19,7 +19,7 @@ mkvextract = sh.Command("mkvextract")
 # Constants
 trackSelectorFragmentPattern = re.compile(r"^([-+]?)(.*)$")
 commaDelimitedNumbersPattern = re.compile(
-    r"^(?:(?:(?<!^),)?(?:(?:-?\d+)?(?:(?<=\d)\~|\~(?=-?\d))(?:-?\d+)?|-?\d+))+$$"
+    r"^(?:(?:(?<!^),)?(?:(?:-?\d+)?(?:(?<=\d)\:|\:(?=-?\d))(?:-?\d+)?|-?\d+))+$"
 )
 
 
@@ -383,10 +383,10 @@ class MediaFile(object):
 
             # Iterate through the arguments in the list
             for argument in selector.split(","):
-                # If there is a tilde character, the argument is a range
-                if "~" in argument:
+                # If there is a colon character, the argument is a range
+                if ":" in argument:
                     rangeStart, rangeEnd = (
-                        (int(s) if s else None) for s in argument.split("~")
+                        (int(s) if s else None) for s in argument.split(":")
                     )
                     for track in trackList[rangeStart:rangeEnd]:
                         indexedTracks.append(track)
