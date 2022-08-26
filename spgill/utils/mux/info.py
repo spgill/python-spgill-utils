@@ -133,6 +133,10 @@ class MediaTrack:
     MasteringDisplay_ColorPrimaries: typing.Optional[str] = None
     MasteringDisplay_Luminance_Source: typing.Optional[str] = None
     MasteringDisplay_Luminance: typing.Optional[str] = None
+    MaxCLL_Source: typing.Optional[str] = None
+    MaxCLL: typing.Optional[str] = None
+    MaxFALL_Source: typing.Optional[str] = None
+    MaxFALL: typing.Optional[str] = None
     MuxingMode: typing.Optional[str] = None
     OverallBitRate_Mode: typing.Optional[str] = None
     OverallBitRate: typing.Optional[int] = None
