@@ -18,7 +18,9 @@ mkvextract = sh.Command("mkvextract")
 
 # Constants
 trackSelectorFragmentPattern = re.compile(r"^([-+]?)(.*)$")
-commaDelimitedNumbersPattern = re.compile(r"^-?\d+(?:,-?\d+)*$")
+commaDelimitedNumbersPattern = re.compile(
+    r"^(?:(?:(?<!^),)?(?:(?:-?\d+)?(?:(?<=\d)\~|\~(?=-?\d))(?:-?\d+)?|-?\d+))+$$"
+)
 
 
 def guessSubtitleCharset(
@@ -365,8 +367,6 @@ class MediaFile(object):
     def selectTracksFromList(
         trackList: list[MediaTrack], selector: str
     ) -> list[MediaTrack]:
-        # Start with an empty list
-        selectedTracks: list[MediaTrack] = []
 
         # "none" is a valid selector. Returns an empty list.
         # Empty or falsy strings are treated the same as "none"
@@ -377,16 +377,28 @@ class MediaFile(object):
         if selector == "all":
             return trackList
 
-        # The selector may also be a comma delimited list of track indexes.
+        # The selector may also be a comma delimited list of track indexes and ranges.
         if commaDelimitedNumbersPattern.match(selector):
-            for index in [int(n) for n in selector.split(",")]:
-                try:
-                    selectedTracks.append(trackList[index])
-                except IndexError:
-                    raise RuntimeError(
-                        f"Track selector specifies track index '{index}', but this index does not exist in the source."
+            indexedTracks: list[MediaTrack] = []
+
+            # Iterate through the arguments in the list
+            for argument in selector.split(","):
+                # If there is a tilde character, the argument is a range
+                if "~" in argument:
+                    rangeStart, rangeEnd = (
+                        (int(s) if s else None) for s in argument.split("~")
                     )
-            return selectedTracks
+                    for track in trackList[rangeStart:rangeEnd]:
+                        indexedTracks.append(track)
+
+                # Else, it's just a index number
+                else:
+                    indexedTracks.append(trackList[int(argument)])
+
+            return [track for track in trackList if track in indexedTracks]
+
+        # Start with an empty list
+        selectedTracks: list[MediaTrack] = []
 
         # Split the selector string into a list of selector fragments
         selectorFragments = selector.split(":")
