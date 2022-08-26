@@ -61,6 +61,7 @@ class MediaTrack:
     container: "MediaFile"
 
     # Important meta fields
+    _raw: typing.Optional[typing.Any]
     ID: typing.Optional[int] = 0  # Default to ID of 0
     Type: typing.Optional[MediaTrackType] = None
     TypeOrder: typing.Optional[
@@ -274,7 +275,9 @@ class MediaFile(object):
                 if destinationKey not in validFieldNames:
                     continue
                 acceptedFields[destinationKey] = trackInfo[sourceKey]
-            self.tracks.append(MediaTrack(self, **acceptedFields))
+            self.tracks.append(
+                MediaTrack(self, _raw=trackInfo, **acceptedFields)
+            )
 
         # Separate the meta info ('General' track) into its own object, if it exists
         self.meta: MediaTrack = None
