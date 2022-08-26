@@ -375,7 +375,7 @@ class MediaFile(object):
 
         # ... As is "all". Returns every track passed in.
         if selector == "all":
-            return trackList
+            return trackList.copy()
 
         # The selector may also be a comma delimited list of track indexes and ranges.
         if commaDelimitedNumbersPattern.match(selector):
