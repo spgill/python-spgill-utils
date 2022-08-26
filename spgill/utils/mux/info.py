@@ -365,9 +365,40 @@ class MediaFile(object):
 
     @staticmethod
     def selectTracksFromList(
-        trackList: list[MediaTrack], selector: str
+        trackList: list[MediaTrack], selector: typing.Optional[str]
     ) -> list[MediaTrack]:
+        """
+        Given a list of `MediaTrack`'s, return a selection of these tracks defined
+        by a `selector` following a particular syntax.
 
+        ### The selector must obey one of the following rules:
+
+        The selection starts with _no_ tracks selected.
+
+        A constant value:
+        - `"none"` or empty string or `None`, returns nothing (an empty array).
+        - `"all"` will return all the input tracks (cloning the array).
+
+        A comma-delimited list of indexes and/or ranges:
+        - These indexes are in reference to the list of tracks passed to the method.
+        - No spaces allowed!
+        - Ranges follow the same rules and basic syntax as Python slice ranges.
+          E.g. `1:3` or `:-1`
+
+        A colon-delimitted list of python expressions:
+        - Each expression either adds to the selection or removes from it.
+          - This is defined by starting your expression with an operator; `+` or `-`.
+          - `+` is implied if no operator is given.
+        - Each expression must return a boolean value.
+        - `"all"` is a valid expression and will add or remove (why?) all tracks from the selection.
+        - There are lots of pre-calculated boolean flags and other variables available
+          during evaluation of your expression. Inspect source code of this method
+          to learn all of the available variables.
+        - Examples;
+          - `+isEnglish`, include only english language tracks.
+          - `+all:-isImage` or `+!isImage`, include only non-image subtitle tracks.
+          - `+isTrueHD:+'commentary' in title.lower()`. include Dolby TrueHD tracks and any tracks labelled commentary.
+        """
         # "none" is a valid selector. Returns an empty list.
         # Empty or falsy strings are treated the same as "none"
         if selector == "none" or not selector:
