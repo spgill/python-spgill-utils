@@ -3,6 +3,7 @@ import base64
 import dataclasses
 import enum
 import pathlib
+import re
 import json
 import typing
 
@@ -14,6 +15,10 @@ import sh
 # Commands
 mediainfo = sh.Command("mediainfo")
 mkvextract = sh.Command("mkvextract")
+
+# Constants
+trackSelectorFragmentPattern = re.compile(r"^([-+]?)(.*)$")
+commaDelimitedNumbersPattern = re.compile(r"^-?\d+(?:,-?\d+)*$")
 
 
 def guessSubtitleCharset(
@@ -355,6 +360,149 @@ class MediaFile(object):
 
         # Run the extract command
         mkvextract(*[path, "chapters", "--simple" if simple else ""], _fg=fg)
+
+    def _selectTracksFromList(
+        self, trackList: list[MediaTrack], selector: str
+    ) -> list[MediaTrack]:
+        # Start with an empty list
+        selectedTracks: list[MediaTrack] = []
+
+        # "none" is a valid selector. Returns an empty list.
+        # Empty or falsy strings are treated the same as "none"
+        if selector == "none" or not selector:
+            return []
+
+        # ... As is "all". Returns every track passed in.
+        if selector == "all":
+            return trackList
+
+        # The selector may also be a comma delimited list of track indexes.
+        if commaDelimitedNumbersPattern.match(selector):
+            for index in [int(n) for n in selector.split(",")]:
+                try:
+                    selectedTracks.append(trackList[index])
+                except IndexError:
+                    raise RuntimeError(
+                        f"Track selector specifies track index '{index}', but this index does not exist in the source."
+                    )
+            return selectedTracks
+
+        # Split the selector string into a list of selector fragments
+        selectorFragments = selector.split(":")
+
+        # Iterate through each fragment consecutively and evaluate them
+        for fragment in selectorFragments:
+            try:
+                polarity, expression = trackSelectorFragmentPattern.match(
+                    fragment
+                ).groups()
+            except AttributeError:
+                raise RuntimeError(
+                    f"Could not parse selector fragment '{fragment}'. Re-examine your selector syntax."
+                )
+
+            filteredTracks: list[MediaTrack] = []
+
+            if expression == "all":
+                filteredTracks = trackList
+
+            # Iterate through each track and apply the specified expression to filter
+            else:
+                for track in trackList:
+                    hdrFormat = (
+                        (track.HDR_Format or "")
+                        + " "
+                        + (track.HDR_Format_Compatibility or "")
+                    ).lower()
+
+                    trackLocals = {
+                        # Fields copied from the track
+                        "track": track,
+                        "id": track.ID,
+                        "lang": track.Language,
+                        "title": track.Title or "",
+                        "codec": track.CodecID,
+                        # Generic flags
+                        "isDefault": track.Default or False,
+                        "isForced": track.Forced
+                        or "forced" in (track.Title or "").lower(),
+                        "isVideo": track.Type == MediaTrackType.Video,
+                        "isAudio": track.Type == MediaTrackType.Audio,
+                        "isSubtitle": track.Type == MediaTrackType.Subtitles,
+                        "isSubtitles": track.Type == MediaTrackType.Subtitles,
+                        "isEnglish": (track.Language or "").lower()
+                        in ["en", "eng"],
+                        # Video track flags
+                        "isHEVC": "hevc" in (track.CodecID or "").lower(),
+                        "isAVC": "avc" in (track.CodecID or "").lower(),
+                        "isHDR": bool(hdrFormat.strip()),
+                        "isDoVi": "dolby" in hdrFormat,
+                        "isHDR10Plus": "hdr10+" in hdrFormat,
+                        # Audio track flags
+                        "isAAC": "aac" in (track.CodecID or "").lower(),
+                        "isAC3": "_ac3" in (track.CodecID or "").lower(),
+                        "isEAC3": "eac3" in (track.CodecID or "").lower(),
+                        "isDTS": "dts" in (track.CodecID or "").lower(),
+                        "isDTSHD": "dts-hd"
+                        in (track.Format_Commercial_IfAny or "").lower(),
+                        "isTrueHD": "truehd" in (track.CodecID or "").lower(),
+                        # Subtitle track flags
+                        "isText": (track.CodecID or "")
+                        .lower()
+                        .startswith("s_text"),
+                        "isImage": (
+                            not (track.CodecID or "")
+                            .lower()
+                            .startswith("s_text")
+                        ),
+                        "isSDH": "sdh" in (track.Title or "").lower(),
+                    }
+
+                    # Evaluate the expression
+                    try:
+                        evalResult = eval(expression, None, trackLocals)
+                    except Exception:
+                        raise RuntimeError(
+                            f"Exception encountered while evaluating selector expression '{expression}'. Re-examine your selector syntax."
+                        )
+
+                    # If the result isn't a boolean, raise an exception
+                    if not isinstance(evalResult, bool):
+                        raise RuntimeError(
+                            f"Return type of selector expression '{expression}' was not boolean. Re-examine your selector syntax."
+                        )
+
+                    if evalResult:
+                        filteredTracks.append(track)
+
+            # If polarity is positive, add the filtered tracks into the selected tracks
+            # list, in its original order.
+            if not polarity or polarity == "+":
+                selectedTracks = [
+                    track
+                    for track in trackList
+                    if (track in filteredTracks or track in selectedTracks)
+                ]
+
+            # Else, filter the selected tracks list by the filtered tracks
+            else:
+                selectedTracks = [
+                    track
+                    for track in selectedTracks
+                    if track not in filteredTracks
+                ]
+
+        return selectedTracks
+
+    def selectTracks(self, selector: str) -> list[MediaTrack]:
+        return self._selectTracksFromList(self.tracks, selector)
+
+    def selectTracksByType(
+        self, trackType: MediaTrackType, selector: str
+    ) -> list[MediaTrack]:
+        return self._selectTracksFromList(
+            self.tracksByType[trackType], selector
+        )
 
 
 class SRTFile(MediaFile):
