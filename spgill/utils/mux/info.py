@@ -361,8 +361,9 @@ class MediaFile(object):
         # Run the extract command
         mkvextract(*[path, "chapters", "--simple" if simple else ""], _fg=fg)
 
-    def _selectTracksFromList(
-        self, trackList: list[MediaTrack], selector: str
+    @staticmethod
+    def selectTracksFromList(
+        trackList: list[MediaTrack], selector: str
     ) -> list[MediaTrack]:
         # Start with an empty list
         selectedTracks: list[MediaTrack] = []
@@ -495,12 +496,12 @@ class MediaFile(object):
         return selectedTracks
 
     def selectTracks(self, selector: str) -> list[MediaTrack]:
-        return self._selectTracksFromList(self.tracks, selector)
+        return self.selectTracksFromList(self.tracks, selector)
 
     def selectTracksByType(
         self, trackType: MediaTrackType, selector: str
     ) -> list[MediaTrack]:
-        return self._selectTracksFromList(
+        return self.selectTracksFromList(
             self.tracksByType[trackType], selector
         )
 
