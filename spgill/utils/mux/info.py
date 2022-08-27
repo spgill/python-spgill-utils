@@ -68,7 +68,9 @@ class MediaTrack:
     container: "MediaFile"
 
     # Important meta fields
-    _raw: typing.Optional[typing.Any]
+    _raw: typing.Optional[typing.Any] = dataclasses.field(
+        hash=False
+    )  # don't hash this field
     ID: typing.Optional[int] = 0  # Default to ID of 0
     Type: typing.Optional[MediaTrackType] = None
     TypeOrder: typing.Optional[
