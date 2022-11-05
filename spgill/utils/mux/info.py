@@ -81,7 +81,7 @@ class MediaTrack:
     Alignment: typing.Optional[str] = None
     AlternateGroup: typing.Optional[int] = None
     AudioCount: typing.Optional[int] = None
-    BitDepth: typing.Optional[int] = None
+    BitDepth: typing.Optional[str] = None
     BitRate_Maximum: typing.Optional[int] = None
     BitRate_Mode: typing.Optional[str] = None
     BitRate_Nominal: typing.Optional[int] = None
@@ -180,7 +180,6 @@ class MediaTrack:
         ###
         "AlternateGroup": int,
         "AudioCount": int,
-        "BitDepth": int,
         "BitRate_Maximum": int,
         "BitRate_Nominal": int,
         "BitRate": int,
