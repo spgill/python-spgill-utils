@@ -74,7 +74,7 @@ class MediaTrack:
     ID: typing.Optional[int] = 0  # Default to ID of 0
     Type: typing.Optional[MediaTrackType] = None
     TypeOrder: typing.Optional[
-        str
+        int
     ] = 1  # If there's only one of the track type, generally the field will be blank
 
     # General information fields
@@ -365,6 +365,60 @@ class MediaFile(object):
         mkvextract(*[path, "chapters", "--simple" if simple else ""], _fg=fg)
 
     @staticmethod
+    def getSelectorFlagValuesForTrack(
+        track: MediaTrack,
+    ) -> dict[str, typing.Union[bool, typing.Any]]:
+        """
+        Return a dictionary mapping of key value pairs for a given track.
+
+        The keys are the flags (i.e., locals) used in the track selector methods.
+        """
+        hdrFormat = (
+            (track.HDR_Format or "")
+            + " "
+            + (track.HDR_Format_Compatibility or "")
+        ).lower()
+
+        return {
+            # Fields copied from the track
+            "track": track,
+            "id": track.ID,
+            "lang": track.Language,
+            "title": track.Title or "",
+            "codec": track.CodecID,
+            # Generic flags
+            "isDefault": track.Default or False,
+            "isForced": track.Forced
+            or "forced" in (track.Title or "").lower(),
+            "isVideo": track.Type == MediaTrackType.Video,
+            "isAudio": track.Type == MediaTrackType.Audio,
+            "isSubtitle": track.Type == MediaTrackType.Subtitles,
+            "isSubtitles": track.Type == MediaTrackType.Subtitles,
+            "isEnglish": (track.Language or "").lower() in ["en", "eng"],
+            "isCompatibility": "compatibility" in (track.Title or "").lower(),
+            # Video track flags
+            "isHEVC": "hevc" in (track.CodecID or "").lower(),
+            "isAVC": "avc" in (track.CodecID or "").lower(),
+            "isHDR": bool(hdrFormat.strip()),
+            "isDoVi": "dolby" in hdrFormat,
+            "isHDR10Plus": "hdr10+" in hdrFormat,
+            # Audio track flags
+            "isAAC": "aac" in (track.CodecID or "").lower(),
+            "isAC3": "_ac3" in (track.CodecID or "").lower(),
+            "isEAC3": "eac3" in (track.CodecID or "").lower(),
+            "isDTS": "dts" in (track.CodecID or "").lower(),
+            "isDTSHD": "dts-hd"
+            in (track.Format_Commercial_IfAny or "").lower(),
+            "isTrueHD": "truehd" in (track.CodecID or "").lower(),
+            # Subtitle track flags
+            "isText": (track.CodecID or "").lower().startswith("s_text"),
+            "isImage": (
+                not (track.CodecID or "").lower().startswith("s_text")
+            ),
+            "isSDH": "sdh" in (track.Title or "").lower(),
+        }
+
+    @staticmethod
     def selectTracksFromList(
         trackList: list[MediaTrack], selector: typing.Optional[str]
     ) -> list[MediaTrack]:
@@ -454,58 +508,13 @@ class MediaFile(object):
             # Iterate through each track and apply the specified expression to filter
             else:
                 for track in trackList:
-                    hdrFormat = (
-                        (track.HDR_Format or "")
-                        + " "
-                        + (track.HDR_Format_Compatibility or "")
-                    ).lower()
-
-                    trackLocals = {
-                        # Fields copied from the track
-                        "track": track,
-                        "id": track.ID,
-                        "lang": track.Language,
-                        "title": track.Title or "",
-                        "codec": track.CodecID,
-                        # Generic flags
-                        "isDefault": track.Default or False,
-                        "isForced": track.Forced
-                        or "forced" in (track.Title or "").lower(),
-                        "isVideo": track.Type == MediaTrackType.Video,
-                        "isAudio": track.Type == MediaTrackType.Audio,
-                        "isSubtitle": track.Type == MediaTrackType.Subtitles,
-                        "isSubtitles": track.Type == MediaTrackType.Subtitles,
-                        "isEnglish": (track.Language or "").lower()
-                        in ["en", "eng"],
-                        # Video track flags
-                        "isHEVC": "hevc" in (track.CodecID or "").lower(),
-                        "isAVC": "avc" in (track.CodecID or "").lower(),
-                        "isHDR": bool(hdrFormat.strip()),
-                        "isDoVi": "dolby" in hdrFormat,
-                        "isHDR10Plus": "hdr10+" in hdrFormat,
-                        # Audio track flags
-                        "isAAC": "aac" in (track.CodecID or "").lower(),
-                        "isAC3": "_ac3" in (track.CodecID or "").lower(),
-                        "isEAC3": "eac3" in (track.CodecID or "").lower(),
-                        "isDTS": "dts" in (track.CodecID or "").lower(),
-                        "isDTSHD": "dts-hd"
-                        in (track.Format_Commercial_IfAny or "").lower(),
-                        "isTrueHD": "truehd" in (track.CodecID or "").lower(),
-                        # Subtitle track flags
-                        "isText": (track.CodecID or "")
-                        .lower()
-                        .startswith("s_text"),
-                        "isImage": (
-                            not (track.CodecID or "")
-                            .lower()
-                            .startswith("s_text")
-                        ),
-                        "isSDH": "sdh" in (track.Title or "").lower(),
-                    }
-
                     # Evaluate the expression
                     try:
-                        evalResult = eval(expression, None, trackLocals)
+                        evalResult = eval(
+                            expression,
+                            None,
+                            MediaFile.getSelectorFlagValuesForTrack(track),
+                        )
                     except Exception:
                         raise RuntimeError(
                             f"Exception encountered while evaluating selector expression '{expression}'. Re-examine your selector syntax."
@@ -564,6 +573,7 @@ class SRTFile(MediaFile):
             self.tracks.append(
                 MediaTrack(
                     self,
+                    _raw="",
                     ID=1,
                     UniqueID=str(hash(str(path))),
                     Type=MediaTrackType.Subtitles,
