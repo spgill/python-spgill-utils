@@ -60,6 +60,45 @@ class MediaTrackType(enum.Enum):
     Subtitles = "Text"
 
 
+class MediaTrackSelectorValues(typing.TypedDict):
+    # Convenience values
+    track: "MediaTrack"
+    id: int
+    lang: str
+    title: str
+    codec: str
+
+    # Generic flags
+    isDefault: bool
+    isForced: bool
+    isVideo: bool
+    isAudio: bool
+    isSubtitle: bool
+    isSubtitles: bool
+    isEnglish: bool
+    isCompatibility: bool
+
+    # Video track flags
+    isHEVC: bool
+    isAVC: bool
+    isHDR: bool
+    isDoVi: bool
+    isHDR10Plus: bool
+
+    # Audio track flags
+    isAAC: bool
+    isAC3: bool
+    isEAC3: bool
+    isDTS: bool
+    isDTSHD: bool
+    isTrueHD: bool
+
+    # Subtitle track flags
+    isText: bool
+    isImage: bool
+    isSDH: bool
+
+
 @dataclasses.dataclass(unsafe_hash=True)
 class MediaTrack:
     """A single track with a `MediaFile` object."""
@@ -247,6 +286,56 @@ class MediaTrack:
         """
         self.container.extractTracks([(self, path)], fg)
 
+    def getSelectorValues(
+        self,
+    ) -> MediaTrackSelectorValues:
+        """
+        Return a dictionary mapping of key value pairs for a given track.
+
+        The keys are the flags (i.e., locals) used in the track selector methods.
+        """
+        hdrFormat = (
+            (self.HDR_Format or "")
+            + " "
+            + (self.HDR_Format_Compatibility or "")
+        ).lower()
+
+        return {
+            # Convenience values
+            "track": self,
+            "id": self.ID or 0,
+            "lang": self.Language or "",
+            "title": self.Title or "",
+            "codec": self.CodecID or "",
+            # Generic flags
+            "isDefault": self.Default or False,
+            "isForced": self.Forced or "forced" in (self.Title or "").lower(),
+            "isVideo": self.Type == MediaTrackType.Video,
+            "isAudio": self.Type == MediaTrackType.Audio,
+            "isSubtitle": self.Type == MediaTrackType.Subtitles,
+            "isSubtitles": self.Type == MediaTrackType.Subtitles,
+            "isEnglish": (self.Language or "").lower() in ["en", "eng"],
+            "isCompatibility": "compatibility" in (self.Title or "").lower(),
+            # Video track flags
+            "isHEVC": "hevc" in (self.CodecID or "").lower(),
+            "isAVC": "avc" in (self.CodecID or "").lower(),
+            "isHDR": bool(hdrFormat.strip()),
+            "isDoVi": "dolby" in hdrFormat,
+            "isHDR10Plus": "hdr10+" in hdrFormat,
+            # Audio track flags
+            "isAAC": "aac" in (self.CodecID or "").lower(),
+            "isAC3": "_ac3" in (self.CodecID or "").lower(),
+            "isEAC3": "eac3" in (self.CodecID or "").lower(),
+            "isDTS": "dts" in (self.CodecID or "").lower(),
+            "isDTSHD": "dts-hd"
+            in (self.Format_Commercial_IfAny or "").lower(),
+            "isTrueHD": "truehd" in (self.CodecID or "").lower(),
+            # Subtitle track flags
+            "isText": (self.CodecID or "").lower().startswith("s_text"),
+            "isImage": (not (self.CodecID or "").lower().startswith("s_text")),
+            "isSDH": "sdh" in (self.Title or "").lower(),
+        }
+
 
 class MediaFile(object):
     """Object representing a single media container file."""
@@ -260,8 +349,12 @@ class MediaFile(object):
             raise RuntimeError(f"'{path}' is not a valid file path!")
 
         # Start by reading the file and decoding the JSON
-        rawInfo = mediainfo(["--output=JSON", self.path])
-        parsedInfo = json.loads(rawInfo.stdout)
+        infoCommand = mediainfo(["--output=JSON", self.path])
+        if infoCommand is None:
+            raise RuntimeError(
+                "Error probing media container with mediainfo tool."
+            )
+        parsedInfo = json.loads(infoCommand.stdout)
 
         # List of valid field names comes from the dataclass
         validFieldNames: list[str] = [
@@ -292,7 +385,7 @@ class MediaFile(object):
             )
 
         # Separate the meta info ('General' track) into its own object, if it exists
-        self.meta: MediaTrack = None
+        self.meta: typing.Optional[MediaTrack] = None
         self.chapters: list[MediaTrack] = []
         for track in self.tracks:
             if track.Type is MediaTrackType.Metadata:
@@ -323,9 +416,10 @@ class MediaFile(object):
         *ONLY WORKS WITH MKV CONTAINERS*
         """
         # Double check this container is mkv
-        if self.meta.Format != "Matroska":
+        containerFormat = self.meta.Format if self.meta else ""
+        if containerFormat != "Matroska":
             raise RuntimeError(
-                f"Parent container of type '{self.meta.Format}' is not supported by extract method."
+                f"Parent container of type '{containerFormat}' is not supported by extract method."
             )
 
         extractArgs: list[typing.Union[pathlib.Path, str]] = [
@@ -356,67 +450,14 @@ class MediaFile(object):
         *ONLY WORKS WITH MKV CONTAINERS*
         """
         # Double check this container is mkv
-        if self.meta.Format != "Matroska":
+        containerFormat = self.meta.Format if self.meta else ""
+        if containerFormat != "Matroska":
             raise RuntimeError(
-                f"Parent container of type '{self.meta.Format}' is not supported by extract method."
+                f"Parent container of type '{containerFormat}' is not supported by extract method."
             )
 
         # Run the extract command
         mkvextract(*[path, "chapters", "--simple" if simple else ""], _fg=fg)
-
-    @staticmethod
-    def getSelectorFlagValuesForTrack(
-        track: MediaTrack,
-    ) -> dict[str, typing.Union[bool, typing.Any]]:
-        """
-        Return a dictionary mapping of key value pairs for a given track.
-
-        The keys are the flags (i.e., locals) used in the track selector methods.
-        """
-        hdrFormat = (
-            (track.HDR_Format or "")
-            + " "
-            + (track.HDR_Format_Compatibility or "")
-        ).lower()
-
-        return {
-            # Fields copied from the track
-            "track": track,
-            "id": track.ID,
-            "lang": track.Language,
-            "title": track.Title or "",
-            "codec": track.CodecID,
-            # Generic flags
-            "isDefault": track.Default or False,
-            "isForced": track.Forced
-            or "forced" in (track.Title or "").lower(),
-            "isVideo": track.Type == MediaTrackType.Video,
-            "isAudio": track.Type == MediaTrackType.Audio,
-            "isSubtitle": track.Type == MediaTrackType.Subtitles,
-            "isSubtitles": track.Type == MediaTrackType.Subtitles,
-            "isEnglish": (track.Language or "").lower() in ["en", "eng"],
-            "isCompatibility": "compatibility" in (track.Title or "").lower(),
-            # Video track flags
-            "isHEVC": "hevc" in (track.CodecID or "").lower(),
-            "isAVC": "avc" in (track.CodecID or "").lower(),
-            "isHDR": bool(hdrFormat.strip()),
-            "isDoVi": "dolby" in hdrFormat,
-            "isHDR10Plus": "hdr10+" in hdrFormat,
-            # Audio track flags
-            "isAAC": "aac" in (track.CodecID or "").lower(),
-            "isAC3": "_ac3" in (track.CodecID or "").lower(),
-            "isEAC3": "eac3" in (track.CodecID or "").lower(),
-            "isDTS": "dts" in (track.CodecID or "").lower(),
-            "isDTSHD": "dts-hd"
-            in (track.Format_Commercial_IfAny or "").lower(),
-            "isTrueHD": "truehd" in (track.CodecID or "").lower(),
-            # Subtitle track flags
-            "isText": (track.CodecID or "").lower().startswith("s_text"),
-            "isImage": (
-                not (track.CodecID or "").lower().startswith("s_text")
-            ),
-            "isSDH": "sdh" in (track.Title or "").lower(),
-        }
 
     @staticmethod
     def selectTracksFromList(
@@ -492,9 +533,14 @@ class MediaFile(object):
         # Iterate through each fragment consecutively and evaluate them
         for fragment in selectorFragments:
             try:
-                polarity, expression = trackSelectorFragmentPattern.match(
-                    fragment
-                ).groups()
+                fragmentMatch = trackSelectorFragmentPattern.match(fragment)
+
+                if fragmentMatch is None:
+                    raise RuntimeError(
+                        f"Could not parse selector fragment '{fragment}'. Re-examine your selector syntax."
+                    )
+
+                polarity, expression = fragmentMatch.groups()
             except AttributeError:
                 raise RuntimeError(
                     f"Could not parse selector fragment '{fragment}'. Re-examine your selector syntax."
@@ -511,9 +557,7 @@ class MediaFile(object):
                     # Evaluate the expression
                     try:
                         evalResult = eval(
-                            expression,
-                            None,
-                            MediaFile.getSelectorFlagValuesForTrack(track),
+                            expression, None, track.getSelectorValues()
                         )
                     except Exception:
                         raise RuntimeError(
