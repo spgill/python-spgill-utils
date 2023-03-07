@@ -349,12 +349,13 @@ class MediaFile(object):
             raise RuntimeError(f"'{path}' is not a valid file path!")
 
         # Start by reading the file and decoding the JSON
-        infoCommand = mediainfo(["--output=JSON", self.path])
+        infoCommand = mediainfo("--output=JSON", self.path)
+        assert isinstance(infoCommand, str)
         if infoCommand is None:
             raise RuntimeError(
                 "Error probing media container with mediainfo tool."
             )
-        parsedInfo = json.loads(infoCommand.stdout)
+        parsedInfo = json.loads(infoCommand)
 
         # List of valid field names comes from the dataclass
         validFieldNames: list[str] = [
