@@ -11,7 +11,7 @@ import dataclass_wizard.enums
 import dataclass_wizard.loaders
 import sh
 
-probe = sh.Command("ffprobe")
+ffprobe = sh.Command("ffprobe")
 
 
 class StreamType(enum.Enum):
@@ -46,6 +46,19 @@ class StreamDisposition(dataclass_wizard.JSONWizard):
     still_image: bool
 
 
+class SideDataType(enum.Enum):
+    """Enum of known `side_data_type` values."""
+
+    DolbyVisionConfig = "DOVI configuration record"
+    DolbyVisionRPU = "Dolby Vision RPU Data"
+    DolbyVisionMeta = "Dolby Vision Metadata"
+
+    HDRDynamicMeta = "HDR Dynamic Metadata SMPTE2094-40 (HDR10+)"
+
+    MasterDisplayMeta = "Mastering display metadata"
+    ContentLightMeta = "Content light level metadata"
+
+
 @dataclasses.dataclass
 class Stream(dataclass_wizard.JSONWizard):
     """Representation of a single stream within a container. Contains all relevant information therein."""
@@ -71,6 +84,11 @@ class Stream(dataclass_wizard.JSONWizard):
     level: typing.Optional[int] = None
     field_order: typing.Optional[str] = None
     avg_frame_rate: typing.Optional[str] = None
+    color_range: typing.Optional[str] = None
+    color_space: typing.Optional[str] = None
+    color_transfer: typing.Optional[str] = None
+    color_primaries: typing.Optional[str] = None
+    chroma_location: typing.Optional[str] = None
 
     # Audio fields
     sample_fmt: typing.Optional[str] = None
@@ -80,6 +98,9 @@ class Stream(dataclass_wizard.JSONWizard):
     bits_per_raw_sample: typing.Optional[str] = None
 
     tags: dict[str, str] = dataclasses.field(default_factory=dict)
+    side_data_list: list[dict[str, typing.Any]] = dataclasses.field(
+        default_factory=list
+    )
 
     # Properties
     @property
@@ -158,13 +179,22 @@ class ContainerFormat(dataclass_wizard.JSONWizard):
     tags: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
+class HDRFormat(enum.Enum):
+    """Enum of recognized/detected HDR formats."""
+
+    HDR10 = "hdr10"
+    HDR10Plus = "hdr10plus"
+    DolbyVision = "dolbyvision"
+    HLG = "hlg"
+
+
 @dataclasses.dataclass
 class Container(dataclass_wizard.JSONWizard):
     """Do NOT instantiate this class manually, use the `Container.open()` class method instead."""
 
-    streams: list[Stream]
-    chapters: list[Chapter]
     format: ContainerFormat
+    streams: list[Stream] = dataclasses.field(repr=False)
+    chapters: list[Chapter] = dataclasses.field(repr=False)
 
     _raw: typing.Annotated[
         typing.Optional[dict], dataclass_wizard.json_key(dump=False)
@@ -186,18 +216,66 @@ class Container(dataclass_wizard.JSONWizard):
 
         return groups
 
+    @property
+    def hdr_formats(self) -> set[HDRFormat]:
+        """
+        Property containing a set of the HDR formats detected in the file.
+
+        The first video stream will be analyzed for HDR metadata.
+        """
+        formats: set[HDRFormat] = set()
+
+        # Get the video stream that should be analyzed. Defaults to the first.
+        video = self.streams_by_type[StreamType.Video][0]
+
+        # Detecting HDR10 and HLG is just a matter of reading the video stream's color transfer
+        if video.color_transfer == "smpte2084":
+            formats.add(HDRFormat.HDR10)
+        elif video.color_transfer == "arib-std-b67":
+            formats.add(HDRFormat.HLG)
+
+        # To detect the other formats, we'll have to look through the first couple
+        # of frames that were previously probed
+        for frame in (self._raw or {}).get("frames", []):
+            for side_data_entry in frame.get("side_data_list", []):
+                side_data_type = side_data_entry.get("side_data_type", None)
+                if side_data_type == SideDataType.DolbyVisionRPU.value:
+                    formats.add(HDRFormat.DolbyVision)
+                if side_data_type == SideDataType.HDRDynamicMeta.value:
+                    formats.add(HDRFormat.HDR10Plus)
+
+        return formats
+
+    @property
+    def is_hdr(self) -> bool:
+        """
+        Simple boolean property indicating if the container contains a video
+        stream encoded in an HDR format.
+
+        See `Container.hdr_formats` for more details information.
+        """
+        return bool(len(self.hdr_formats))
+
     @classmethod
     def open(cls, path: pathlib.Path) -> "Container":
         """Open a media container by its path and return a `Container` instance representing it."""
-        # Probe the media file
-        raw = probe(
+        raw = ffprobe(
+            "-hide_banner",
             "-v",
             "quiet",
+            # Leave these args here in case they need to be added again later
+            # "-select_streams",
+            # "v",
             "-print_format",
             "json",
             "-show_format",
+            "-show_frames",
             "-show_streams",
             "-show_chapters",
+            "-read_intervals",
+            "%+#10",
+            "-show_entries",
+            "frame=color_space,color_primaries,color_transfer,side_data_list,pix_fmt",
             path,
         )
         assert isinstance(raw, str)
