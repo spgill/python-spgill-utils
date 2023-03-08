@@ -14,6 +14,7 @@ import dataclass_wizard.loaders
 import sh
 
 ffprobe = sh.Command("ffprobe")
+mkvextract = sh.Command("mkvextract")
 
 selector_fragment_pattern = re.compile(r"^([-+]?)(.*)$")
 comma_delim_nos_pattern = re.compile(
@@ -115,7 +116,7 @@ class StreamSelectorValues(typing.TypedDict, total=True):
     isSDH: bool
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(unsafe_hash=True)
 class Stream(dataclass_wizard.JSONWizard):
     """Representation of a single stream within a container. Contains all relevant information therein."""
 
@@ -154,9 +155,9 @@ class Stream(dataclass_wizard.JSONWizard):
     channel_layout: typing.Optional[str] = None
     bits_per_raw_sample: typing.Optional[str] = None
 
-    tags: dict[str, str] = dataclasses.field(default_factory=dict)
+    tags: dict[str, str] = dataclasses.field(default_factory=dict, hash=False)
     side_data_list: list[dict[str, typing.Any]] = dataclasses.field(
-        default_factory=list
+        default_factory=list, hash=False
     )
 
     # Properties
@@ -257,6 +258,19 @@ class Stream(dataclass_wizard.JSONWizard):
         """
         return bool(len(self.hdr_formats))
 
+    def __repr__(self) -> str:
+        attributes = ["index", "type", "codec_name", "title", "language"]
+        formatted_attributes: list[str] = []
+        for name in attributes:
+            formatted_attributes.append(f"{name}={getattr(self, name)!r}")
+        return f"{type(self).__name__}({', '.join(formatted_attributes)})"
+
+    def __post_init__(self):
+        self.container: typing.Optional["Container"] = None
+
+    def _bind(self, container: "Container") -> None:
+        self.container = container
+
     def get_selector_values(self) -> StreamSelectorValues:
         """
         Return a dictionary mapping of computed stream selector values.
@@ -301,21 +315,17 @@ class Stream(dataclass_wizard.JSONWizard):
             "isSDH": "sdh" in (self.title or "").lower(),
         }
 
-    def __repr__(self) -> str:
-        attributes = ["index", "type", "codec_name", "title", "language"]
-        formatted_attributes: list[str] = []
-        for name in attributes:
-            formatted_attributes.append(f"{name}={getattr(self, name)!r}")
-        return f"{type(self).__name__}({', '.join(formatted_attributes)})"
+    def extract(self, path: pathlib.Path, fg: bool = True):
+        """
+        Extract this stream to a new file.
 
-    def __post_init__(self):
-        self.container: typing.Optional["Container"] = None
-
-    def _bind(self, container: "Container") -> None:
-        self.container = container
+        *ONLY WORKS WITH MKV CONTAINERS*
+        """
+        assert self.container is not None
+        self.container.extract_streams([(self, path)], fg)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(unsafe_hash=True)
 class Chapter(dataclass_wizard.JSONWizard):
     """Representation of a single chapter defined within a container."""
 
@@ -325,7 +335,7 @@ class Chapter(dataclass_wizard.JSONWizard):
     end: int
     end_time: str
 
-    tags: dict[str, str] = dataclasses.field(default_factory=dict)
+    tags: dict[str, str] = dataclasses.field(default_factory=dict, hash=False)
 
     @property
     def title(self) -> typing.Optional[str]:
@@ -333,7 +343,7 @@ class Chapter(dataclass_wizard.JSONWizard):
         return self.tags.get("title", None)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(unsafe_hash=True)
 class ContainerFormat(dataclass_wizard.JSONWizard):
     """Format metadata of a container"""
 
@@ -348,16 +358,16 @@ class ContainerFormat(dataclass_wizard.JSONWizard):
     bit_rate: int  # Cast from str
     probe_score: int
 
-    tags: dict[str, str] = dataclasses.field(default_factory=dict)
+    tags: dict[str, str] = dataclasses.field(default_factory=dict, hash=False)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(unsafe_hash=True)
 class Container(dataclass_wizard.JSONWizard):
     """Do NOT instantiate this class manually, use the `Container.open()` class method instead."""
 
     format: ContainerFormat
-    streams: list[Stream] = dataclasses.field(repr=False)
-    chapters: list[Chapter] = dataclasses.field(repr=False)
+    streams: list[Stream] = dataclasses.field(repr=False, hash=False)
+    chapters: list[Chapter] = dataclasses.field(repr=False, hash=False)
 
     _raw: typing.Annotated[
         typing.Optional[dict], dataclass_wizard.json_key(dump=False)
@@ -601,3 +611,44 @@ class Container(dataclass_wizard.JSONWizard):
         return self.select_streams_from_list(
             self.streams_by_type[type], selector
         )
+
+    def extract_streams(
+        self, stream_pairs: list[tuple[Stream, pathlib.Path]], fg: bool = True
+    ):
+        """
+        Extract one or more tracks from this container.
+
+        *ONLY WORKS WITH MKV CONTAINERS*
+        """
+        # Assert that this is in fact an MKV container
+        assert self.format.format_name.startswith("matroska")
+
+        # Begin building a list of arguments for extraction
+        extract_args: list[typing.Union[pathlib.Path, str]] = [
+            self.format.filename,
+            "tracks",
+        ]
+
+        # Iterate through each tuple given and generator appropriate arguments
+        for stream, path in stream_pairs:
+            # Assert the stream belongs to this container
+            assert stream.container is self
+
+            extract_args.append(f"{stream.index}:{path}")
+
+        # Execute the extraction commands
+        mkvextract(*extract_args, _fg=fg)
+
+    def extract_chapters(
+        self, path: pathlib.Path, simple: bool = False, fg: bool = True
+    ):
+        """
+        Extract _all_ chapters in this container to a new file.
+
+        *ONLY WORTH WITH MKV CONTAINERS*
+        """
+        # Assert that this is in fact an MKV container
+        assert self.format.format_name.startswith("matroska")
+
+        # Call mkvextract to begin the extraction
+        mkvextract(path, "chapters", "--simple" if simple else "", _fg=fg)
