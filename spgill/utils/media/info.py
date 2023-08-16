@@ -1,5 +1,4 @@
 # stdlib imports
-import dataclasses
 import enum
 import functools
 import json
@@ -8,23 +7,28 @@ import re
 import typing
 
 # vendor imports
-import dataclass_wizard
-import dataclass_wizard.enums
-import dataclass_wizard.loaders
+import pydantic
 import sh
 
-ffprobe = sh.Command("ffprobe")
-mkvextract = sh.Command("mkvextract")
+# local imports
+from . import exceptions
 
-selector_fragment_pattern = re.compile(r"^([-+]?)(.*)$")
-comma_delim_nos_pattern = re.compile(
+_ffprobe = sh.Command("ffprobe")
+_mkvextract = sh.Command("mkvextract")
+
+_selector_fragment_pattern = re.compile(r"^([-+]?)(.*)$")
+_comma_delim_nos_pattern = re.compile(
     r"^(?:(?:(?<!^),)?(?:[vas]?(?:-?\d+)?(?:(?<=\d)\:|\:(?=-?\d))(?:-?\d+)?|[vas]?-?\d+))+$"
 )
-index_with_type_pattern = re.compile(r"^([vas]?)(.*?)$")
+_index_with_type_pattern = re.compile(r"^([vas]?)(.*?)$")
 
 
-class StreamType(enum.Enum):
-    """Enum representing the base type of a stream."""
+_subtitle_image_codecs: list[str] = ["hdmv_pgs_subtitle", "dvd_subtitle"]
+"""List of subtitle codecs that are image-based formats."""
+
+
+class TrackType(enum.Enum):
+    """Base types of a track."""
 
     Video = "video"
     Audio = "audio"
@@ -32,31 +36,33 @@ class StreamType(enum.Enum):
     Attachment = "attachment"
 
 
-@dataclasses.dataclass
-class StreamDisposition(dataclass_wizard.JSONWizard):
-    """Disposition flags of a stream. Default, forced, visual impaired, etc."""
+class TrackFlags(pydantic.BaseModel):
+    """Boolean attribute flags of a track. Default, forced, visual impaired, etc."""
 
     default: bool
-    dub: bool
-    original: bool
-    comment: bool
-    lyrics: bool
-    karaoke: bool
+    """This track is eligible to be played by default."""
+
     forced: bool
+    """This track contains onscreen text or foreign-language dialogue."""
+
     hearing_impaired: bool
+    """This track is suitable for users with hearing impairments."""
+
     visual_impaired: bool
-    clean_effects: bool
-    attached_pic: bool
-    timed_thumbnails: bool
-    captions: bool
-    descriptions: bool
-    metadata: bool
-    dependent: bool
-    still_image: bool
+    """This track is suitable for users with visual impairments."""
+
+    text_descriptions: bool = pydantic.Field(alias="descriptions")
+    """This track contains textual descriptions of video content."""
+
+    original_language: bool = pydantic.Field(alias="original")
+    """This track is in the content's original language (not a translation)."""
+
+    commentary: bool = pydantic.Field(alias="comment")
+    """This track contains commentary."""
 
 
 class SideDataType(enum.Enum):
-    """Enum of known `side_data_type` values."""
+    """Known values of track `side_data_type`. Mostly to identify HDR and HDR-related data."""
 
     DolbyVisionConfig = "DOVI configuration record"
     DolbyVisionRPU = "Dolby Vision RPU Data"
@@ -69,7 +75,7 @@ class SideDataType(enum.Enum):
 
 
 class HDRFormat(enum.Enum):
-    """Enum of recognized/detected HDR formats."""
+    """Recognized HDR formats."""
 
     HDR10 = "hdr10"
     HDR10Plus = "hdr10plus"
@@ -77,23 +83,28 @@ class HDRFormat(enum.Enum):
     HLG = "hlg"
 
 
-class StreamSelectorValues(typing.TypedDict, total=True):
+class TrackSelectorValues(typing.TypedDict, total=True):
+    """Selector flags used for simple selection of tracks from a container (specifically from the CLI)."""
+
     # Convenience values
-    stream: "Stream"
+    track: "Track"
     index: int
     typeIndex: int
     lang: str
     title: str
     codec: str
 
-    # Generic flags
-    isDefault: bool
-    isForced: bool
+    # Convenience flags
     isVideo: bool
     isAudio: bool
     isSubtitle: bool
     isEnglish: bool
-    isCompatibility: bool
+
+    # Boolean disposition/flags
+    isDefault: bool
+    isForced: bool
+    isHI: bool
+    isCommentary: bool
 
     # Video track flags
     isHEVC: bool
@@ -111,21 +122,19 @@ class StreamSelectorValues(typing.TypedDict, total=True):
     isTrueHD: bool
 
     # Subtitle track flags
-    isSRT: bool
-    isPGS: bool
-    isSDH: bool
+    isText: bool
+    isImage: bool
 
 
-@dataclasses.dataclass(unsafe_hash=True)
-class Stream(dataclass_wizard.JSONWizard):
-    """Representation of a single stream within a container. Contains all relevant information therein."""
+class Track(pydantic.BaseModel):
+    """Representation of a single track within a container. Contains all relevant attributes therein."""
 
-    disposition: StreamDisposition
+    flags: TrackFlags = pydantic.Field(alias="disposition")
 
     # Generic fields
     index: int
-    type: typing.Annotated[StreamType, dataclass_wizard.json_key("codec_type")]
-    start_time: str
+    type: TrackType = pydantic.Field(alias="codec_type")
+    start_time: typing.Optional[str] = None
     codec_name: typing.Optional[str] = None
     codec_long_name: typing.Optional[str] = None
     duration: typing.Optional[str] = None
@@ -155,63 +164,71 @@ class Stream(dataclass_wizard.JSONWizard):
     channel_layout: typing.Optional[str] = None
     bits_per_raw_sample: typing.Optional[str] = None
 
-    tags: dict[str, str] = dataclasses.field(default_factory=dict, hash=False)
-    side_data_list: list[dict[str, typing.Any]] = dataclasses.field(
-        default_factory=list, hash=False
+    tags: dict[str, str] = pydantic.Field(default_factory=dict)
+    side_data_list: list[dict[str, typing.Any]] = pydantic.Field(
+        default_factory=list
     )
+
+    container: typing.Optional["Container"] = None
+    """Field linked to the parent track container object."""
+
+    def __hash__(self) -> int:
+        assert self.container
+        return hash(f"{self.container.format.filename}/{self.index}")
 
     # Properties
     @property
     def language(self) -> typing.Optional[str]:
-        """Convenience property for reading the language tag of this stream."""
+        """Convenience property for reading the language tag of this track."""
         return self.tags.get("language", None)
 
     @property
     def title(self) -> typing.Optional[str]:
-        """Convenience property for reading the title tag of this stream."""
+        """Convenience property for reading the title tag of this track."""
         return self.tags.get("title", None)
 
     @property
     def type_index(self) -> int:
         """
-        Property to get this stream's index _in relation_ to other streams
+        Property to get this track's index _in relation_ to other tracks
         of the same type.
 
-        Requires that this `Stream` instance is bound to a parent `Container`
+        Requires that this `Track` instance is bound to a parent `Container`
         instance. This happens automatically if you use the `Container.open()`
-        class method, but if you manually instantiate a `Stream` instance you
-        may have issues. This proprty returns `-1` if it is invoked with
-        no bound `Container`.
+        class method, but if you manually instantiate a `Track` instance you
+        may have issues.
         """
         if self.container is None:
-            return -1
+            raise exceptions.TrackNoParentContainer(self)
 
         i: int = 0
-        for stream in self.container.streams:
-            if stream == self:
+        for track in self.container.tracks:
+            if track == self:
                 break
-            if stream.type == self.type:
+            if track.type == self.type:
                 i += 1
         return i
 
     @functools.cached_property
     def hdr_formats(self) -> set[HDRFormat]:
         """
-        Property containing a set of the HDR formats detected in the stream.
+        Property containing a set of the HDR formats detected in the track.
 
-        Only works on video streams, and requires a bound `Container` instance.
+        Only works on video tracks, and requires a bound `Container` instance.
 
-        Warning: the first access of this property will have a slight delay as it
-        is probed for more information. This result will be cached and will not
-        cause delays on further access of the same instance.
+        Warning: The first access of this property will have a slight delay as the
+        container file is probed for information. This result will be cached and returned
+        on further access attempts.
         """
-        # If this is not a compatible stream, return an empty set
-        if self.type is not StreamType.Video or self.container is None:
-            return set()
+        if self.container is None:
+            raise exceptions.TrackNoParentContainer(self)
+
+        if self.type is not TrackType.Video:
+            raise exceptions.NotVideoTrack(self)
 
         formats: set[HDRFormat] = set()
 
-        # Detecting HDR10 and HLG is just a matter of reading the video stream's color transfer
+        # Detecting HDR10 and HLG is just a matter of reading the video track's color transfer
         if self.color_transfer == "smpte2084":
             formats.add(HDRFormat.HDR10)
         elif self.color_transfer == "arib-std-b67":
@@ -219,7 +236,7 @@ class Stream(dataclass_wizard.JSONWizard):
 
         # To detect the other formats, we'll have to run a probe on the track
         # through the first couple of frames.
-        results = ffprobe(
+        results = _ffprobe(
             "-hide_banner",
             "-loglevel",
             "warning",
@@ -252,9 +269,9 @@ class Stream(dataclass_wizard.JSONWizard):
     @property
     def is_hdr(self) -> bool:
         """
-        Simple boolean property indicating if the stream is encoded in an HDR format.
+        Simple boolean property indicating if the track is encoded in an HDR format.
 
-        See `Stream.hdr_formats` for more details information.
+        See `Track.hdr_formats` for warnings on access delay time.
         """
         return bool(len(self.hdr_formats))
 
@@ -265,35 +282,34 @@ class Stream(dataclass_wizard.JSONWizard):
             formatted_attributes.append(f"{name}={getattr(self, name)!r}")
         return f"{type(self).__name__}({', '.join(formatted_attributes)})"
 
-    def __post_init__(self):
-        self.container: typing.Optional["Container"] = None
+    # def model_post_init(self, __context):
+    #     self.container: typing.Optional["Container"] = None
 
     def _bind(self, container: "Container") -> None:
         self.container = container
 
-    def get_selector_values(self) -> StreamSelectorValues:
+    def get_selector_values(self) -> TrackSelectorValues:
         """
-        Return a dictionary mapping of computed stream selector values.
-
-        TODO: Validate the codec-based selectors as they likely need to be adjusted
-        based on ffprobe's output.
+        Return a dictionary mapping of computed track selector values.
         """
         return {
             # Convenience values
-            "stream": self,
+            "track": self,
             "index": self.index,
             "typeIndex": self.type_index,
             "lang": self.language or "",
             "title": self.title or "",
             "codec": self.codec_name or "",
-            # Generic flags
-            "isDefault": self.disposition.default,
-            "isForced": self.disposition.forced,
-            "isVideo": self.type == StreamType.Video,
-            "isAudio": self.type == StreamType.Audio,
-            "isSubtitle": self.type == StreamType.Subtitle,
+            # Convenience flags
+            "isVideo": self.type == TrackType.Video,
+            "isAudio": self.type == TrackType.Audio,
+            "isSubtitle": self.type == TrackType.Subtitle,
             "isEnglish": (self.language or "").lower() in ["en", "eng"],
-            "isCompatibility": "compatibility" in (self.title or "").lower(),
+            # Boolean disposition flags
+            "isDefault": self.flags.default,
+            "isForced": self.flags.forced,
+            "isHI": self.flags.hearing_impaired,
+            "isCommentary": self.flags.commentary,
             # Video track flags
             "isHEVC": "hevc" in (self.codec_name or "").lower(),
             "isAVC": "avc" in (self.codec_name or "").lower(),
@@ -309,24 +325,23 @@ class Stream(dataclass_wizard.JSONWizard):
             and "hd" in (self.profile or "").lower(),
             "isTrueHD": "truehd" in (self.codec_name or "").lower(),
             # Subtitle track flags
-            # TODO: restore the "isText" and "isImage" fields by establishing a list of text-based sub codecs
-            "isSRT": self.codec_name == "subrip",
-            "isPGS": self.codec_name == "hdmv_pgs_subtitle",
-            "isSDH": "sdh" in (self.title or "").lower(),
+            "isImage": self.codec_name in _subtitle_image_codecs,
+            "isText": self.codec_name not in _subtitle_image_codecs,
         }
 
     def extract(self, path: pathlib.Path, fg: bool = True):
         """
-        Extract this stream to a new file.
+        Extract this track to a new file.
 
         *ONLY WORKS WITH MKV CONTAINERS*
         """
-        assert self.container is not None
-        self.container.extract_streams([(self, path)], fg)
+        if self.container is None:
+            raise exceptions.TrackNoParentContainer(self)
+
+        self.container.extract_tracks([(self, path)], fg)
 
 
-@dataclasses.dataclass(unsafe_hash=True)
-class Chapter(dataclass_wizard.JSONWizard):
+class Chapter(pydantic.BaseModel):
     """Representation of a single chapter defined within a container."""
 
     id: int
@@ -335,7 +350,7 @@ class Chapter(dataclass_wizard.JSONWizard):
     end: int
     end_time: str
 
-    tags: dict[str, str] = dataclasses.field(default_factory=dict, hash=False)
+    tags: dict[str, str] = pydantic.Field(default_factory=dict)
 
     @property
     def title(self) -> typing.Optional[str]:
@@ -343,56 +358,57 @@ class Chapter(dataclass_wizard.JSONWizard):
         return self.tags.get("title", None)
 
 
-@dataclasses.dataclass(unsafe_hash=True)
-class ContainerFormat(dataclass_wizard.JSONWizard):
+class ContainerFormat(pydantic.BaseModel):
     """Format metadata of a container"""
 
     filename: str
-    streams: typing.Annotated[int, dataclass_wizard.json_key("nb_streams")]
-    # programs: typing.Annotated[int, dataclass_wizard.json_key("nb_programs")]  # Still not sure what "programs" are
+    tracks_count: int = pydantic.Field(alias="nb_streams")
+    # programs_count: int = pydantic.Field(alias="nb_programs")  # Still not sure what "programs" are
     format_name: str
     format_long_name: str
-    start_time: str
-    duration: str
+    start_time: typing.Optional[str] = None
+    duration: typing.Optional[str] = None
     size: int  # Cast from str
-    bit_rate: int  # Cast from str
+    bit_rate: typing.Optional[int] = None  # Cast from str
     probe_score: int
 
-    tags: dict[str, str] = dataclasses.field(default_factory=dict, hash=False)
+    tags: dict[str, str] = pydantic.Field(default_factory=dict)
 
 
-@dataclasses.dataclass(unsafe_hash=True)
-class Container(dataclass_wizard.JSONWizard):
+class Container(pydantic.BaseModel):
     """Do NOT instantiate this class manually, use the `Container.open()` class method instead."""
 
     format: ContainerFormat
-    streams: list[Stream] = dataclasses.field(repr=False, hash=False)
-    chapters: list[Chapter] = dataclasses.field(repr=False, hash=False)
+    tracks: list[Track] = pydantic.Field(
+        alias="streams"
+    )  # We alias this to "streams", because we prefer mkv terminology
+    chapters: list[Chapter]
 
-    _raw: typing.Annotated[
-        typing.Optional[dict], dataclass_wizard.json_key(dump=False)
-    ] = dataclasses.field(default=None, repr=False, hash=False, compare=False)
+    _raw: typing.Optional[dict]
     """Raw JSON probe data for this container, parsed to a Python object with no typings."""
 
+    def __hash__(self) -> int:
+        return hash(self.format.filename)
+
     @property
-    def streams_by_type(self) -> dict[StreamType, list[Stream]]:
-        """Property returns a dictionary grouping streams by their type."""
-        groups: dict[StreamType, list[Stream]] = {
-            StreamType.Video: [],
-            StreamType.Audio: [],
-            StreamType.Subtitle: [],
-            StreamType.Attachment: [],
+    def tracks_by_type(self) -> dict[TrackType, list[Track]]:
+        """Property with a dictionary that groups tracks by their type."""
+        groups: dict[TrackType, list[Track]] = {
+            TrackType.Video: [],
+            TrackType.Audio: [],
+            TrackType.Subtitle: [],
+            TrackType.Attachment: [],
         }
 
-        for stream in self.streams:
-            groups[stream.type].append(stream)
+        for track in self.tracks:
+            groups[track.type].append(track)
 
         return groups
 
     @classmethod
     def open(cls, path: pathlib.Path) -> "Container":
-        """Open a media container by its path and return a `Container` instance representing it."""
-        raw = ffprobe(
+        """Open a media container by its path and return a new `Container` instance."""
+        raw = _ffprobe(
             "-hide_banner",
             "-v",
             "quiet",
@@ -409,41 +425,42 @@ class Container(dataclass_wizard.JSONWizard):
         assert isinstance(raw, str)
 
         # Parse the JSON into a new instance
-        inst = Container.from_json(raw)
+        # inst = Container.from_json(raw)
+        inst = Container.parse_raw(raw)
         assert not isinstance(inst, list)
 
         # Parse the json to a python object and store it in the raw attribute
         inst._raw = json.loads(raw)
 
-        # Bind all the tracks detected back to this container
-        for stream in inst.streams:
-            stream._bind(inst)
+        # Bind all the tracks back to this container
+        for track in inst.tracks:
+            track._bind(inst)
 
         return inst
 
     @staticmethod
-    def select_streams_from_list(
-        stream_list: list[Stream], selector: typing.Optional[str]
-    ) -> list[Stream]:
+    def select_tracks_from_list(  # noqa: C901
+        track_list: list[Track], selector: typing.Optional[str]
+    ) -> list[Track]:
         """
-        Given a list of `MediaTrack`'s, return a selection of these streams defined
+        Given a list of `MediaTrack`'s, return a selection of these tracks defined
         by a `selector` following a particular syntax.
 
         ### The selector must obey one of the following rules:
 
-        The selection starts with _no_ streams selected.
+        The selection starts with _no_ tracks selected.
 
         A constant value:
         - `"none"` or empty string or `None`, returns nothing (an empty array).
-        - `"all"` will return all the input streams (cloning the array).
+        - `"all"` will return all the input tracks (cloning the array).
 
         A comma-delimited list of indexes and/or slices:
-        - These indexes are in reference to the list of streams passed to the method.
+        - These indexes are in reference to the list of tracks passed to the method.
         - No spaces allowed!
         - Slices follow the same rules and basic syntax as Python slices.
           E.g. `1:3` or `:-1`
         - If the index/slice begins with one of `v` (video), `a` (audio), or
-          `s` (subtitle) then the index/range will be taken from only streams
+          `s` (subtitle) then the index/range will be taken from only tracks
           of that type (wrt the order they appear in the list).
 
         A colon-delimitted list of python expressions:
@@ -451,76 +468,74 @@ class Container(dataclass_wizard.JSONWizard):
           - This is defined by starting your expression with an operator; `+` or `-`.
           - `+` is implied if no operator is given.
         - Each expression must return a boolean value.
-        - `"all"` is a valid expression and will add or remove (why?) all streams from the selection.
+        - `"all"` is a valid expression and will add or remove (why?) all tracks from the selection.
         - There are lots of pre-calculated boolean flags and other variables available
           during evaluation of your expression. Inspect source code of this method
           to learn all of the available variables.
         - Examples;
-          - `+isEnglish`, include only english language streams.
-          - `+all:-isPGS` or `+!isPGS`, include only non-PGS subtitle streams.
-          - `+isTrueHD:+'commentary' in title.lower()`. include Dolby TrueHD streams and any streams labelled commentary.
+          - `+isEnglish`, include only english language tracks.
+          - `+all:-isPGS` or `+!isPGS`, include only non-PGS subtitle tracks.
+          - `+isTrueHD:+'commentary' in title.lower()`. include Dolby TrueHD tracks and any tracks labelled commentary.
         """
         # "none" is a valid selector. Returns an empty list.
         # Empty or falsy strings are treated the same as "none"
         if selector == "none" or not selector:
             return []
 
-        # ... As is "all". Returns every stream passed in.
+        # ... As is "all". Returns every track passed in.
         if selector == "all":
-            return stream_list.copy()
+            return track_list.copy()
 
-        # The selector may also be a comma delimited list of stream indexes and ranges.
-        if comma_delim_nos_pattern.match(selector):
-            # Create a quick mapping of stream types to streams
-            grouped_streams: dict[StreamType, list[Stream]] = {
-                StreamType.Video: [],
-                StreamType.Audio: [],
-                StreamType.Subtitle: [],
+        # The selector may also be a comma delimited list of track indexes and ranges.
+        if _comma_delim_nos_pattern.match(selector):
+            # Create a quick mapping of track types to tracks
+            grouped_tracks: dict[TrackType, list[Track]] = {
+                TrackType.Video: [],
+                TrackType.Audio: [],
+                TrackType.Subtitle: [],
             }
-            for stream in stream_list:
+            for track in track_list:
                 if (
-                    group_list := grouped_streams.get(stream.type, None)
+                    group_list := grouped_tracks.get(track.type, None)
                 ) is not None:
-                    group_list.append(stream)
+                    group_list.append(track)
 
-            indexed_streams: list[Stream] = []
+            indexed_tracks: list[Track] = []
 
             # Iterate through the arguments in the list
             for fragment in selector.split(","):
-                fragment_match = index_with_type_pattern.match(fragment)
+                fragment_match = _index_with_type_pattern.match(fragment)
                 assert fragment_match is not None
                 argument_type, argument = fragment_match.groups()
 
-                # If a type is specified, we need to change where the streams
+                # If a type is specified, we need to change where the tracks
                 # are selected from
-                stream_source = stream_list
+                track_source = track_list
                 if argument_type == "v":
-                    stream_source = grouped_streams[StreamType.Video]
+                    track_source = grouped_tracks[TrackType.Video]
                 elif argument_type == "a":
-                    stream_source = grouped_streams[StreamType.Audio]
+                    track_source = grouped_tracks[TrackType.Audio]
                 elif argument_type == "s":
-                    stream_source = grouped_streams[StreamType.Subtitle]
+                    track_source = grouped_tracks[TrackType.Subtitle]
 
                 # If there is a colon character, the argument is a range
                 if ":" in argument:
                     start, end = (
                         (int(s) if s else None) for s in argument.split(":")
                     )
-                    for stream in stream_source[start:end]:
-                        indexed_streams.append(stream)
+                    for track in track_source[start:end]:
+                        indexed_tracks.append(track)
 
                 # Else, it's just a index number
                 else:
-                    indexed_streams.append(stream_source[int(argument)])
+                    indexed_tracks.append(track_source[int(argument)])
 
-            # Return it as an iteration of the master stream list so that it
+            # Return it as an iteration of the master track list so that it
             # maintains the original order
-            return [
-                stream for stream in stream_list if stream in indexed_streams
-            ]
+            return [track for track in track_list if track in indexed_tracks]
 
         # Start with an empty list
-        selected_streams: list[Stream] = []
+        selected_tracks: list[Track] = []
 
         # Split the selector string into a list of selector fragments
         selector_fragments = selector.split(":")
@@ -528,7 +543,7 @@ class Container(dataclass_wizard.JSONWizard):
         # Iterate through each fragment consecutively and evaluate them
         for fragment in selector_fragments:
             try:
-                fragment_match = selector_fragment_pattern.match(fragment)
+                fragment_match = _selector_fragment_pattern.match(fragment)
 
                 if fragment_match is None:
                     raise RuntimeError(
@@ -541,18 +556,18 @@ class Container(dataclass_wizard.JSONWizard):
                     f"Could not parse selector fragment '{fragment}'. Re-examine your selector syntax."
                 )
 
-            filtered_streams: list[Stream] = []
+            filtered_tracks: list[Track] = []
 
             if expression == "all":
-                filtered_streams = stream_list
+                filtered_tracks = track_list
 
             # Iterate through each track and apply the specified expression to filter
             else:
-                for stream in stream_list:
+                for track in track_list:
                     # Evaluate the expression
                     try:
-                        evalResult = eval(
-                            expression, None, stream.get_selector_values()
+                        eval_result = eval(
+                            expression, None, track.get_selector_values()
                         )
                     except Exception:
                         raise RuntimeError(
@@ -560,68 +575,68 @@ class Container(dataclass_wizard.JSONWizard):
                         )
 
                     # If the result isn't a boolean, raise an exception
-                    if not isinstance(evalResult, bool):
+                    if not isinstance(eval_result, bool):
                         raise RuntimeError(
                             f"Return type of selector expression '{expression}' was not boolean. Re-examine your selector syntax."
                         )
 
-                    if evalResult:
-                        filtered_streams.append(stream)
+                    if eval_result:
+                        filtered_tracks.append(track)
 
             # If polarity is positive, add the filtered tracks into the selected tracks
             # list, in its original order.
             if not polarity or polarity == "+":
-                selected_streams = [
-                    stream
-                    for stream in stream_list
-                    if (
-                        stream in filtered_streams
-                        or stream in selected_streams
-                    )
+                selected_tracks = [
+                    track
+                    for track in track_list
+                    if (track in filtered_tracks or track in selected_tracks)
                 ]
 
             # Else, filter the selected tracks list by the filtered tracks
             else:
-                selected_streams = [
-                    stream
-                    for stream in selected_streams
-                    if stream not in filtered_streams
+                selected_tracks = [
+                    track
+                    for track in selected_tracks
+                    if track not in filtered_tracks
                 ]
 
-        return selected_streams
+        return selected_tracks
 
-    def select_streams(self, selector: str) -> list[Stream]:
+    def select_tracks(self, selector: str) -> list[Track]:
         """
-        Select streams from _this_ container using a selector string.
-
-        More information on the syntax of the selector string can be found
-        in the docstring of the `Container.select_streams_from_list` method.
-        """
-        return self.select_streams_from_list(self.streams, selector)
-
-    def selectTracksByType(
-        self, type: StreamType, selector: str
-    ) -> list[Stream]:
-        """
-        Select streams of a particular type from _this_ container using a selector string.
+        Select tracks from this container using a selector string.
 
         More information on the syntax of the selector string can be found
-        in the docstring of the `Container.select_streams_from_list` method.
+        in the docstring of the `Container.select_tracks_from_list` method.
         """
-        return self.select_streams_from_list(
-            self.streams_by_type[type], selector
+        return self.select_tracks_from_list(self.tracks, selector)
+
+    def select_tracks_by_type(
+        self, type: TrackType, selector: str
+    ) -> list[Track]:
+        """
+        Select tracks--of only a particular type--from this container using a selector string.
+
+        More information on the syntax of the selector string can be found
+        in the docstring of the `Container.select_tracks_from_list` method.
+        """
+        return self.select_tracks_from_list(
+            self.tracks_by_type[type], selector
         )
 
-    def extract_streams(
-        self, stream_pairs: list[tuple[Stream, pathlib.Path]], fg: bool = True
+    def _assert_is_matroska(self):
+        if "matroska" not in self.format.format_name.lower():
+            raise exceptions.NotMatroskaContainer(self)
+
+    def extract_tracks(
+        self, track_pairs: list[tuple[Track, pathlib.Path]], fg: bool = True
     ):
         """
         Extract one or more tracks from this container.
 
         *ONLY WORKS WITH MKV CONTAINERS*
         """
-        # Assert that this is in fact an MKV container
-        assert self.format.format_name.startswith("matroska")
+        self._assert_is_matroska()
 
         # Begin building a list of arguments for extraction
         extract_args: list[typing.Union[pathlib.Path, str]] = [
@@ -630,25 +645,28 @@ class Container(dataclass_wizard.JSONWizard):
         ]
 
         # Iterate through each tuple given and generator appropriate arguments
-        for stream, path in stream_pairs:
-            # Assert the stream belongs to this container
-            assert stream.container is self
+        for track, path in track_pairs:
+            # Assert the track belongs to this container
+            assert track.container is self
 
-            extract_args.append(f"{stream.index}:{path}")
+            extract_args.append(f"{track.index}:{path}")
 
         # Execute the extraction commands
-        mkvextract(*extract_args, _fg=fg)
+        _mkvextract(*extract_args, _fg=fg)
 
     def extract_chapters(
         self, path: pathlib.Path, simple: bool = False, fg: bool = True
     ):
         """
-        Extract _all_ chapters in this container to a new file.
+        Extract all chapters in this container to a file.
 
         *ONLY WORTH WITH MKV CONTAINERS*
         """
-        # Assert that this is in fact an MKV container
-        assert self.format.format_name.startswith("matroska")
+        self._assert_is_matroska()
 
         # Call mkvextract to begin the extraction
-        mkvextract(path, "chapters", "--simple" if simple else "", _fg=fg)
+        _mkvextract(path, "chapters", "--simple" if simple else "", _fg=fg)
+
+    def track_belongs_to_container(self, track: Track) -> bool:
+        """Return `True` if the given track exists within this container."""
+        return track in self.tracks

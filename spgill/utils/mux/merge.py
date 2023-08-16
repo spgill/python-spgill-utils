@@ -1,3 +1,7 @@
+"""
+THIS MODULE IS DEPRECATED. USE `spgill.utils.media.mux` INSTEAD.
+"""
+
 ### stdlib imports
 import operator
 import pathlib

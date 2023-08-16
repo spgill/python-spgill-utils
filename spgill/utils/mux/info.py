@@ -1,3 +1,7 @@
+"""
+THIS MODULE IS DEPRECATED. USE `spgill.utils.media.info` INSTEAD.
+"""
+
 ### stdlib imports
 import base64
 import dataclasses

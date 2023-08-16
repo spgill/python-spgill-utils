@@ -1,3 +1,7 @@
+"""
+THIS MODULE IS DEPRECATED. USE `spgill.utils.media.edit` INSTEAD.
+"""
+
 ### stdlib imports
 import enum
 import pathlib
