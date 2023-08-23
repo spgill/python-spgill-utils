@@ -14,7 +14,7 @@ import typing
 import sh
 
 ### local imports
-from . import exceptions, info
+from . import exceptions, info, tools
 
 _mkvmerge = sh.Command("mkvmerge")
 
@@ -314,6 +314,30 @@ class MuxJob:
         self._track_order.append(track)
         if options:
             self.set_track_options(track, options)
+
+    def append_srt_track(
+        self,
+        container: info.Container,
+        options: typing.Optional[dict[TrackOption, OptionValue]] = None,
+    ) -> None:
+        """
+        Convenience function for appending an SRT container to a mux job.
+
+        This method will automatically try to guess the charset of the subtitle
+        file and set the appropriate option so that any charset conversion can take
+        place when the mux operation is performed.
+
+        The methodology used here may apply to other text-based subtitle formats,
+        but the scope of this method will be strictly limited to SRT files.
+        """
+        assert container.format.format_name == "srt"
+
+        charset = tools.guess_subtitle_charset(container.format.filename)
+
+        self.append_track(
+            container.tracks[0],
+            {**(options or {}), TrackOption.Charset: charset},
+        )
 
     def append_all_tracks(
         self,
