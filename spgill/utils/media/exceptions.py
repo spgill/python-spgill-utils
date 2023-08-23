@@ -1,3 +1,8 @@
+"""
+A small collection of bespoke exceptions used internally by the `spgill.utils.media.*`
+suite of modules.
+"""
+
 ### stdlib imports
 import typing
 

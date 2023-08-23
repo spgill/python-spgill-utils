@@ -1,3 +1,10 @@
+"""
+Module for reading and examining media container files.
+
+Container of many different formats can be opened (`ffprobe` is the tool used),
+but some operations can only be performed on Matroska files.
+"""
+
 # stdlib imports
 import enum
 import functools

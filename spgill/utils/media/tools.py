@@ -1,3 +1,7 @@
+"""
+Module containing miscellaneous utility functions that don't belong anywhere else.
+"""
+
 ### stdlib imports
 import pathlib
 
@@ -8,7 +12,13 @@ import charset_normalizer
 def guess_subtitle_charset(
     path: pathlib.Path, ignore_low_confidence: bool = False
 ) -> str:
-    """Guess the charset of a subtitle file. MUST be a text subtitle file."""
+    """
+    Guess the charset of a TEXT subtitle file.
+
+    Useful when muxing .SRT or other text subtitles into a Matroska container,
+    because Matroska will assume everything is UTF-8; this tool can help identify
+    if a character set needs to be converted in the mux process.
+    """
     with path.open("rb") as handle:
         results = charset_normalizer.detect(handle.read())
 
