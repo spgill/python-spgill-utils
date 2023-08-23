@@ -14,10 +14,18 @@ import re
 import typing
 
 # vendor imports
+import humanize
 import pydantic
+import rich.console
+import rich.progress
+import rich.prompt
+import rich.text
+import rich.table
 import sh
+import typer
 
 # local imports
+from ..walk import walk
 from . import exceptions
 
 _ffprobe = sh.Command("ffprobe")
@@ -711,3 +719,144 @@ class Container(pydantic.BaseModel):
     def track_belongs_to_container(self, track: Track) -> bool:
         """Return `True` if the given track exists within this container."""
         return track in self.tracks
+
+
+_default_cli_extensions: list[str] = [".mkv", ".mp4", ".m4v", ".wmv", ".avi"]
+
+_affirmative = "[green]✓[/green]"
+_negative = "[red]✗[/red]"
+_em_dash = "—"
+
+
+def _main(
+    sources: list[pathlib.Path] = typer.Argument(
+        ..., help="List of files and/or directories to probe."
+    ),
+    recurse: bool = typer.Option(
+        False,
+        "--recurse",
+        "-r",
+        help="Recurse directory sources to look for media files. By default only files contained directly in the directory are probed.",
+    ),
+    extensions: list[str] = typer.Option(
+        _default_cli_extensions,
+        "--extension",
+        "-x",
+        help="Specify file extensions to consider when searching directories.",
+    ),
+    selector: str = typer.Option(
+        "all",
+        "--selector",
+        "-s",
+        help="Selector for deciding which tracks to show from each container. Defaults to all tracks.",
+    ),
+):
+    """
+    CLI interface for probing media containers and printing info about the container
+    and their tracks.
+    """
+
+    console = rich.console.Console()
+
+    # Construct a full list of media container paths to scan
+    path_list: list[pathlib.Path] = []
+    for source in sources:
+        if source.is_file():
+            path_list.append(source)
+        elif recurse:
+            for *_, paths in walk(source, sort=True):
+                for path in paths:
+                    if path.suffix.lower() in extensions:
+                        path_list.append(path)
+        else:
+            for path in sorted(source.iterdir()):
+                if path.suffix.lower() == ".mkv":
+                    path_list.append(path)
+
+    # If no file were found in the sweep, abort
+    if not len(path_list):
+        console.print("[red italic]No files found. Aborting!")
+        exit()
+
+    # Construct the table and its header
+    table = rich.table.Table()
+    table.add_column("File")
+    table.add_column("ID")
+    table.add_column("Type")
+    table.add_column("Order")
+    table.add_column("Codec")
+    table.add_column("Mode")
+    table.add_column("Bitrate", justify="right")
+    table.add_column("Resolution")
+    table.add_column("HDR")
+    table.add_column("Channels")
+    table.add_column("Language")
+    table.add_column("Default")
+    table.add_column("Forced")
+    table.add_column("HI")
+    table.add_column("Commentary")
+    table.add_column("Title")
+
+    # Iterate through each media file and list the audio tracks
+    for i, path in enumerate(
+        rich.progress.track(
+            path_list,
+            console=console,
+            description="Gathering media information...",
+            transient=True,
+        )
+    ):
+        container = Container.open(path)
+        track_list = container.select_tracks(selector)
+
+        # Add a row for each track
+        for j, track in enumerate(track_list):
+            resolution = ""
+            if track.width:
+                resolution = f"{track.width}x{track.height}"
+                if track.field_order in ["tt", "bb", "tb", "bt"]:
+                    resolution += "i"
+                else:
+                    resolution += "p"
+
+                if track.avg_frame_rate:
+                    resolution += str(round(eval(track.avg_frame_rate), 2))
+
+            hdr = ""
+            if track.type == TrackType.Video:
+                hdr = ",".join([f.name for f in track.hdr_formats])
+
+            table.add_row(
+                str(path),
+                str(track.index),
+                str(track.type.name if track.type else ""),
+                str(track.type_index),
+                str(track.codec_name),
+                str(track.sample_fmt or _em_dash),
+                str(
+                    humanize.naturalsize(
+                        int(track.bits_per_raw_sample or 0),
+                        binary=True,
+                        gnu=True,
+                    )
+                    + "/s"
+                    if track.bits_per_raw_sample
+                    else _em_dash
+                ),
+                resolution,
+                hdr,
+                str(track.channels or ""),
+                str(track.language or "und"),
+                _affirmative if track.flags.default else _negative,
+                _affirmative if track.flags.forced else _negative,
+                _affirmative if track.flags.hearing_impaired else _negative,
+                _affirmative if track.flags.commentary else _negative,
+                track.name or "",
+                end_section=(j == len(track_list) - 1),
+            )
+
+    console.print(table)
+
+
+if __name__ == "__main__":
+    typer.run(_main)
