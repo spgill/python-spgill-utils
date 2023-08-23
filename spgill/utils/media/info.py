@@ -259,11 +259,14 @@ class Track(pydantic.BaseModel):
         container file is probed for information. This result will be cached and returned
         on further access attempts.
         """
+        # HDR is (obv) only for video tracks. If this method is invoked on a non-
+        # video track we will just return an empty set instead of throwing an
+        # exception. This is just a cleaner operation in the end.
+        if self.type is not TrackType.Video:
+            return set()
+
         if self.container is None:
             raise exceptions.TrackNoParentContainer(self)
-
-        if self.type is not TrackType.Video:
-            raise exceptions.NotVideoTrack(self)
 
         formats: set[HDRFormat] = set()
 
@@ -340,9 +343,9 @@ class Track(pydantic.BaseModel):
             "name": self.name or "",
             "codec": self.codec_name or "",
             # Convenience flags
-            "isVideo": self.type == TrackType.Video,
-            "isAudio": self.type == TrackType.Audio,
-            "isSubtitle": self.type == TrackType.Subtitle,
+            "isVideo": self.type is TrackType.Video,
+            "isAudio": self.type is TrackType.Audio,
+            "isSubtitle": self.type is TrackType.Subtitle,
             "isEnglish": (self.language or "").lower() in ["en", "eng"],
             # Boolean disposition flags
             "isDefault": self.flags.default,
