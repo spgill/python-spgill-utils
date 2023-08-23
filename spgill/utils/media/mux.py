@@ -405,7 +405,7 @@ class MuxJob:
         for option_type, option_value in options.items():
             yield from self._format_option(option_type, option_value)
 
-        yield container.format.filename
+        yield str(container.format.filename)
 
     def _generate_track_arguments(
         self, track: info.Track

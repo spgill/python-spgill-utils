@@ -181,7 +181,9 @@ class Track(pydantic.BaseModel):
 
     def __hash__(self) -> int:
         assert self.container
-        return hash(f"{self.container.format.filename}/{self.index}")
+        return hash(
+            f"{self.container.format.filename.absolute()}/{self.index}"
+        )
 
     # Properties
     @property
@@ -368,7 +370,7 @@ class Chapter(pydantic.BaseModel):
 class ContainerFormat(pydantic.BaseModel):
     """Format metadata of a container"""
 
-    filename: str
+    filename: pathlib.Path  # Cast from str
     tracks_count: int = pydantic.Field(alias="nb_streams")
     # programs_count: int = pydantic.Field(alias="nb_programs")  # Still not sure what "programs" are
     format_name: str
@@ -395,7 +397,7 @@ class Container(pydantic.BaseModel):
     """Raw JSON probe data for this container, parsed to a Python object with no typings."""
 
     def __hash__(self) -> int:
-        return hash(self.format.filename)
+        return hash(self.format.filename.absolute())
 
     @property
     def tracks_by_type(self) -> dict[TrackType, list[Track]]:
