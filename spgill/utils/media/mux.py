@@ -402,6 +402,239 @@ class MuxJob:
         ):
             self.delete_container_options(container)
 
+    def _infer_flags_from_name(self) -> None:
+        # Iterate through all tracks and use their names to infer boolean flags
+        # that should be assigned to them.
+        for track in self._track_order:
+            current_options = self.get_track_options(track)
+            name = str(
+                (current_options.get(TrackOption.Name, track.name) or "")
+            ).lower()
+
+            new_options: dict[TrackOption, OptionValue] = {}
+
+            if "forced" in name:
+                new_options[TrackOption.Forced] = True
+
+            if "sdh" in name:
+                new_options[TrackOption.HearingImpaired] = True
+
+            if "descriptive" in name or "descriptions" in name:
+                new_options[TrackOption.TextDescriptions] = True
+
+            if "commentary" in name:
+                new_options[TrackOption.Commentary] = True
+
+            self.update_track_options(track, new_options)
+
+    def _assign_default_flags(self) -> None:
+        # Group all of the tracks by language and then by type of track
+        tracks_by_language_by_type: dict[
+            str, dict[info.TrackType, list[info.Track]]
+        ] = {}
+        for track in self._track_order:
+            language = track.language or "und"
+            if language not in tracks_by_language_by_type:
+                tracks_by_language_by_type[language] = {}
+            if track.type not in tracks_by_language_by_type[language]:
+                tracks_by_language_by_type[language][track.type] = []
+            tracks_by_language_by_type[language][track.type].append(track)
+
+        # Next we will iterate through the tracks of each language and identify
+        # candidates for default track. If a track is disqualified as a candidate
+        # its flag will be immediate set to false
+        for _, tracks_by_type in tracks_by_language_by_type.items():
+            for _, tracks in tracks_by_type.items():
+                default_found: bool = False
+                alternate: typing.Optional[info.Track] = None
+                for track in tracks:
+                    current_options = self.get_track_options(track)
+                    name = str(
+                        (
+                            current_options.get(TrackOption.Name, track.name)
+                            or ""
+                        )
+                    ).lower()
+
+                    new_options: dict[TrackOption, OptionValue] = {}
+
+                    # Determine values of flags based on the current stored value
+                    # in the track OR currently stored mux options
+                    is_forced = bool(
+                        current_options.get(
+                            TrackOption.Forced, track.flags.forced
+                        )
+                    )
+                    is_hi = bool(
+                        current_options.get(
+                            TrackOption.HearingImpaired,
+                            track.flags.hearing_impaired,
+                        )
+                    )
+                    is_commentary = bool(
+                        current_options.get(
+                            TrackOption.Commentary, track.flags.commentary
+                        )
+                    )
+                    # I wish there was an MKV flag for this scenario but alas
+                    is_compatibility = "compatibility" in name
+
+                    # If any of these conditions are true, then the track should
+                    # not be a default track, under normal circumstances
+                    if is_forced or is_hi or is_commentary or is_compatibility:
+                        new_options[TrackOption.Default] = False
+
+                    # HI or compatibility tracks, in an ideal scenario,  will never
+                    # be default. But they will remain an alternate should no other
+                    # acceptable candidates be found
+                    if (is_hi or is_compatibility) and not alternate:
+                        alternate = track
+
+                    # Else, this track is a candidate for default track
+                    else:
+                        new_options[TrackOption.Default] = not default_found
+                        default_found = True
+
+                    self.update_track_options(track, new_options)
+
+                # If no default track was ever found, but there was an alternate,
+                # the flag will be given to the alternate
+                if not default_found and alternate:
+                    default_found = True
+                    self.update_track_options(
+                        alternate, {TrackOption.Default: True}
+                    )
+
+                # If by some stroke of dumb luck a default track was not found,
+                # then we need to debug
+                assert default_found
+
+    def _assign_sensible_names(self) -> None:
+        # Determine if there are multiple video tracks
+        multiple_video_tracks = (
+            len(
+                [
+                    t
+                    for t in self._track_order
+                    if t.type is info.TrackType.Video
+                ]
+            )
+            > 1
+        )
+
+        # Iterate through each output track and assign names based on guidelines
+        for track in self._track_order:
+            current_options = self.get_track_options(track)
+            new_options: dict[TrackOption, OptionValue] = {}
+
+            name = str(
+                (current_options.get(TrackOption.Name, track.name) or "")
+            )
+
+            language = str(
+                (
+                    current_options.get(TrackOption.Language, track.language)
+                    or ""
+                )
+            )
+
+            is_default = bool(
+                current_options.get(TrackOption.Default, track.flags.default)
+            )
+
+            is_hi = bool(
+                current_options.get(
+                    TrackOption.HearingImpaired,
+                    track.flags.hearing_impaired,
+                )
+            )
+
+            is_commentary = bool(
+                current_options.get(
+                    TrackOption.Commentary, track.flags.commentary
+                )
+            )
+
+            # Video track rules
+            if (
+                track.type is info.TrackType.Video
+                and not multiple_video_tracks
+            ):
+                new_options[TrackOption.Name] = ""
+
+            # Audio track rules
+            if track.type is info.TrackType.Audio:
+                # Name not necessary if it's the default track and has a language
+                # identifier
+                if is_default and language:
+                    new_options[TrackOption.Name] = ""
+
+                # If it's commentary and doesn't have a name, give it a generic
+                # name, because not all video players can recognize the commentary
+                # MKV flag
+                if is_commentary and not name:
+                    new_options[TrackOption.Name] = "Commentary"
+
+            # Sub track rules
+            if track.type is info.TrackType.Subtitle:
+                # Name not necessary if it's the default track and has a language
+                # identifier
+                if is_default and language:
+                    new_options[TrackOption.Name] = ""
+
+                # If it's an HI track give it the title "SDH" because not all video
+                # players can recognize the hearing impaired flag.
+                if is_hi:
+                    new_options[TrackOption.Name] = "SDH"
+
+            self.update_track_options(track, new_options)
+
+    def auto_assign_track_options(
+        self,
+        /,
+        infer_flags_from_name: bool = True,
+        assign_sensible_names: bool = False,
+    ) -> None:
+        """
+        Automatically assign various boolean flags and track names to the output
+        based on sensible guidelines.
+
+        This method is best used immediately before executing the mux operation.
+        Invoking this multiple times _may_ result in undefined behavior.
+
+        This method performs several operations in order:
+
+        1.  If `infer_flags_from_name == True`, then the track names will be used
+            to assign flags to the track; "commentary" will infer the commentary
+            flag, "SDH" will infer the hearing_impaired flag, etc.
+
+        2.  The tracks will be organized by language and type and (approx.) the
+            first track of any given language and type will be assigned as the default
+            track, and any special tracks (forced, commentary, etc.) will have
+            any default flags removed.
+
+        3.  If `assign_sensible_names == True`, then track names will be assigned
+            or removed from tracks in a sensible fashion roughly following these
+            rules:
+                -   Video tracks will have no name unless there are multiple video
+                    tracks.
+                -   Audio tracks that are the default track AND have a language
+                    identifier will have their names removed. Additional audio tracks
+                    will keep their name.
+                -   Subtitle tracks will not a name unless they have no language
+                    identifier OR are a hearing impaired trackunder which case their
+                    name will be "SDH" (this is because not all video players are
+                    capable of indicating the presence of the hearing impaired flag).
+
+        """
+        if infer_flags_from_name:
+            self._infer_flags_from_name()
+
+        self._assign_default_flags()
+
+        if assign_sensible_names:
+            self._assign_sensible_names()
+
     def _format_option(
         self,
         option_type: _AnyOption,
@@ -508,5 +741,6 @@ class MuxJob:
 
     def run(self, fg=True):
         """Run the mux job command."""
+        assert len(self._track_order) > 0  # quick sanity check
         arguments = list(self._generate_command_arguments())
         return _mkvmerge(*arguments, _fg=fg)
