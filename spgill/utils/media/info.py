@@ -133,6 +133,36 @@ class TrackSelectorValues(typing.TypedDict, total=True):
     isImage: bool
 
 
+class TrackTags(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(extra="allow")
+
+    # Important tags
+    name: typing.Optional[str] = pydantic.Field(
+        validation_alias=pydantic.AliasChoices("title", "TITLE"), default=None
+    )
+    language: typing.Optional[str] = pydantic.Field(
+        validation_alias=pydantic.AliasChoices("language", "LANGUAGE"),
+        default=None,
+    )
+
+    # Other meta tags. I think these only work on MKV files written with semi-recent tools.
+    bps: typing.Optional[int] = pydantic.Field(alias="BPS", default=None)
+    duration: typing.Optional[str] = pydantic.Field(
+        alias="DURATION", default=None
+    )
+    number_of_frames: typing.Optional[int] = pydantic.Field(
+        alias="NUMBER_OF_FRAMES", default=None
+    )
+    number_of_bytes: typing.Optional[int] = pydantic.Field(
+        alias="NUMBER_OF_BYTES", default=None
+    )
+
+    @property
+    def extras(self) -> dict[str, typing.Any]:
+        """A dictionary of extra tags that are not explicitly typed in `TrackTags`"""
+        return self.__pydantic_extra__ or {}
+
+
 class Track(pydantic.BaseModel):
     """Representation of a single track within a container. Contains all relevant attributes therein."""
 
@@ -171,7 +201,7 @@ class Track(pydantic.BaseModel):
     channel_layout: typing.Optional[str] = None
     bits_per_raw_sample: typing.Optional[str] = None
 
-    tags: dict[str, str] = pydantic.Field(default_factory=dict)
+    tags: TrackTags = pydantic.Field(default_factory=TrackTags)
     side_data_list: list[dict[str, typing.Any]] = pydantic.Field(
         default_factory=list
     )
@@ -189,17 +219,12 @@ class Track(pydantic.BaseModel):
     @property
     def language(self) -> typing.Optional[str]:
         """Convenience property for reading the language tag of this track."""
-        return self.tags.get("language", None)
+        return self.tags.language
 
     @property
     def name(self) -> typing.Optional[str]:
-        """
-        Convenience property for reading the name of this track.
-
-        This is actually stored in the tags under "title", but we prefer Matroska
-        toolchain naming conventions which refer to tracks having "names" not "titles".
-        """
-        return self.tags.get("title", None)
+        """Convenience property for reading the name tag of this track."""
+        return self.tags.name
 
     @property
     def type_index(self) -> int:
@@ -290,7 +315,7 @@ class Track(pydantic.BaseModel):
         return bool(len(self.hdr_formats))
 
     def __repr__(self) -> str:
-        attributes = ["index", "type", "codec_name", "title", "language"]
+        attributes = ["index", "type", "codec_name", "name", "language"]
         formatted_attributes: list[str] = []
         for name in attributes:
             formatted_attributes.append(f"{name}={getattr(self, name)!r}")
