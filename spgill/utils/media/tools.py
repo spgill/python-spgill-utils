@@ -14,7 +14,7 @@ def guess_subtitle_charset(
     /,
     confidence_threshold: float = 0.5,
     ignore_low_confidence: bool = False,
-    default_charset: str = "utf-8",
+    default_charset: str = "UTF-8",
 ) -> str:
     """
     Guess the charset of a TEXT subtitle file.
