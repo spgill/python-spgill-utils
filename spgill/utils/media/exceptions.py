@@ -32,11 +32,6 @@ class TrackNoParentContainer(_TrackException):
         return f"Track has no Container bound as parent: {self._track!r}"
 
 
-class NotVideoTrack(_TrackException):
-    def __str__(self) -> str:
-        return f"You tried to invoke a video-only function on a track of the wrong type: {self._track!r}"
-
-
 class _ContainerException(Exception):
     # We can't use the actual container type because it would cause a circular import
     def __init__(self, container: typing.Any) -> None:
