@@ -6,9 +6,9 @@ a Matroska file.
 """
 
 ### stdlib imports
+import enum
 import pathlib
 import typing
-import typing_extensions
 
 ### vendor imports
 import sh
@@ -16,42 +16,162 @@ import sh
 ### local imports
 from . import exceptions, info
 
-mkvmerge = sh.Command("mkvmerge")
+_mkvmerge = sh.Command("mkvmerge")
 
 
-class OutputMuxOptions(typing.TypedDict, total=False):
-    title: str
+class _OptionType(enum.Enum):
+    String = enum.auto()
+    Boolean = enum.auto()
+    Unary = enum.auto()
 
 
-class ContainerMuxOptions(typing.TypedDict, total=False):
-    no_chapters: bool
-    no_attachments: bool
-    no_global_tags: bool
+OptionValue = typing.Union[str, bool, pathlib.Path]
+"""Accepted value types for track/container/global mux options."""
 
 
-class StreamMuxOptions(typing.TypedDict, total=False):
-    # String attributes
-    title: str
-    charset: str
+class _BaseOptionFormatter:
+    def __init__(self, option: str) -> None:
+        self.option = option
 
-    # Boolean flags
-    default: bool
-    forced: bool
-    reduce_to_core: bool
-
-    enabled: bool
-    """This is a legacy attribute. Best not to use it."""
-
-    hearing_impaired: bool
-    visual_impaired: bool
-    text_descriptions: bool
-    original_language: bool
-    commentary: bool
+    def format(
+        self, value: OptionValue, track: typing.Optional[info.Track]
+    ) -> list[str]:
+        return [self.option]
 
 
-_StreamMuxOptionPair = tuple[info.Track, StreamMuxOptions]
+class _UnaryOptionFormatter(_BaseOptionFormatter):
+    # No change from the base formatter
+    pass
 
-_container_options_for_type: dict[info.TrackType, dict[str, str]] = {
+
+class _BooleanOptionFormatter(_BaseOptionFormatter):
+    def format(
+        self, value: OptionValue, track: typing.Optional[info.Track]
+    ) -> list[str]:
+        assert isinstance(value, bool)
+        assert track is not None
+        return [self.option, f"{track.index}:{int(value)}"]
+
+
+class _StringOptionFormatter(_BaseOptionFormatter):
+    def format(
+        self, value: OptionValue, track: typing.Optional[info.Track]
+    ) -> list[str]:
+        assert isinstance(value, (str, pathlib.Path))
+        assert track is not None
+        return [self.option, f"{track.index}:{value}"]
+
+
+class OutputOption(enum.Enum):
+    """Options for the output container."""
+
+    Title = enum.auto()
+    """Sets the general title for the output file, e.g. the movie name."""
+
+
+class ContainerOption(enum.Enum):
+    """Options for containers used as the mux input."""
+
+    NoChapters = enum.auto()
+    """Don't copy chapters from this file."""
+
+    NoAttachments = enum.auto()
+    """Don't copy attachments from this file."""
+
+    NoGlobalTags = enum.auto()
+    """Don't copy global tags from this file."""
+
+    NoTrackTags = enum.auto()
+    """Don't copy any track specific tags from this file."""
+
+
+class TrackOption(enum.Enum):
+    """Options for muxing tracks."""
+
+    # String track attributes
+    Name = enum.auto()
+    """Sets the track name for the given track"""
+
+    Language = enum.auto()
+    """Sets the language for the given track. Both ISO 639-2 language codes and ISO 639-1 country codes are allowed. The country codes will be converted to language codes automatically."""
+
+    Tags = enum.auto()
+    """Read tags for the track from the file name"""
+
+    Charset = enum.auto()
+    """Sets the character set for the conversion to UTF-8 for UTF-8 subtitles. If not specified the charset will be derived from the current locale settings."""
+
+    # Boolean track flags
+    Default = enum.auto()
+    """This track is eligible to be played by default."""
+
+    Enabled = enum.auto()
+    """Legacy option for compatibility. Best not to be used."""
+
+    Forced = enum.auto()
+    """This track contains onscreen text or foreign-language dialogue."""
+
+    HearingImpaired = enum.auto()
+    """This track is suitable for users with hearing impairments."""
+
+    VisualImpaired = enum.auto()
+    """This track is suitable for users with visual impairments."""
+
+    TextDescriptions = enum.auto()
+    """This track contains textual descriptions of video content."""
+
+    OriginalLanguage = enum.auto()
+    """This track is in the content's original language (not a translation)."""
+
+    Commentary = enum.auto()
+    """This track contains commentary."""
+
+    # Unary flags
+    ReduceToCore = enum.auto()
+    """Drop all HD extensions from an audio track and keep only its lossy core. This works only for DTS tracks."""
+
+
+_AnyOption = typing.Union[OutputOption, ContainerOption, TrackOption]
+
+_option_formatters: dict[_AnyOption, _BaseOptionFormatter] = {
+    # Output options
+    OutputOption.Title: _StringOptionFormatter("--title"),
+    #
+    #
+    # Container options
+    ContainerOption.NoChapters: _UnaryOptionFormatter("--no-chapters"),
+    ContainerOption.NoAttachments: _UnaryOptionFormatter("--no-attachments"),
+    ContainerOption.NoGlobalTags: _UnaryOptionFormatter("--no-global-tags"),
+    ContainerOption.NoTrackTags: _UnaryOptionFormatter("--no-track-tags"),
+    #
+    #
+    # Track options
+    TrackOption.Name: _StringOptionFormatter("--track-name"),
+    TrackOption.Language: _StringOptionFormatter("--language"),
+    TrackOption.Tags: _StringOptionFormatter("--tags"),
+    TrackOption.Charset: _StringOptionFormatter("--sub-charset"),
+    TrackOption.Default: _BooleanOptionFormatter("--default-track-flag"),
+    TrackOption.Enabled: _BooleanOptionFormatter("--track-enabled-flag"),
+    TrackOption.Forced: _BooleanOptionFormatter("--forced-display-flag"),
+    TrackOption.HearingImpaired: _BooleanOptionFormatter(
+        "--hearing-impaired-flag"
+    ),
+    TrackOption.VisualImpaired: _BooleanOptionFormatter(
+        "--visual-impaired-flag"
+    ),
+    TrackOption.TextDescriptions: _BooleanOptionFormatter(
+        "--text-descriptions-flag"
+    ),
+    TrackOption.OriginalLanguage: _BooleanOptionFormatter("--original-flag"),
+    TrackOption.Commentary: _BooleanOptionFormatter("--commentary-flag"),
+    TrackOption.ReduceToCore: _UnaryOptionFormatter("--reduce-to-core"),
+}
+"""Mapping of all output/container/track options to the correct formatter types."""
+
+_container_options_for_type: dict[
+    info.TrackType,
+    dict[typing.Literal["select", "exclude"], str],
+] = {
     info.TrackType.Video: {
         "select": "--video-tracks",
         "exclude": "--no-video",
@@ -65,318 +185,292 @@ _container_options_for_type: dict[info.TrackType, dict[str, str]] = {
         "exclude": "--no-subtitles",
     },
 }
-
-
-def _format_option_id_colon_value(
-    option: str, index: int, value: typing.Optional[str]
-) -> typing.Generator[str, None, None]:
-    if value is not None:
-        yield option
-        yield f"{index}:{value}"
-
-
-def _format_option_id_colon_boolean(
-    option: str, index: int, value: typing.Optional[bool]
-) -> typing.Generator[str, None, None]:
-    if value is not None:
-        yield option
-        yield f"{index}:{int(value)}"
-
-
-def _format_option_id(
-    option: str, index: int, value: typing.Optional[bool]
-) -> typing.Generator[str, None, None]:
-    if value is True:
-        yield option
-        yield str(index)
+"""Mapping of track types to the corresponding CLI options for including/excluding tracks from a source container."""
 
 
 class MuxJob:
-    output: pathlib.Path
+    """Class representing a media mux operation resulting in a single output file."""
 
-    _output_options: OutputMuxOptions
-    _container_options: dict[info.Container, ContainerMuxOptions]
-    _streams: list[_StreamMuxOptionPair]
+    output: pathlib.Path
+    """File path of the output container."""
+
+    _output_options: dict[OutputOption, OptionValue]
+    _container_options: dict[
+        info.Container, dict[ContainerOption, OptionValue]
+    ]
+    _track_options: dict[info.Track, dict[TrackOption, OptionValue]]
+    _track_order: list[info.Track]
 
     def __init__(
         self,
         output: pathlib.Path,
         /,
-        output_options: typing.Optional[OutputMuxOptions] = None,
-        containers: typing.Optional[
-            dict[info.Container, ContainerMuxOptions]
+        output_options: typing.Optional[
+            dict[OutputOption, OptionValue]
         ] = None,
-        streams: typing.Optional[list[_StreamMuxOptionPair]] = None,
     ) -> None:
         self.output = output
 
+        # Initialize all of the options instance vars
         self._output_options = output_options or {}
-        self._container_options = containers or {}
-        self._streams = streams or []
-
-    def get_output_options(
-        self,
-    ) -> OutputMuxOptions:
-        """Get the options for the output container."""
-        return self._output_options
+        self._container_options = {}
+        self._track_options = {}
+        self._track_order = []
 
     def set_output_options(
-        self,
-        /,
-        **options: typing_extensions.Unpack[OutputMuxOptions],
+        self, options: dict[OutputOption, OptionValue]
     ) -> None:
-        """Replace the options for the output container."""
+        """Set the output options, replacing any previously stored values."""
         self._output_options = options
 
-    def get_container_options(
-        self,
-        container: info.Container,
-    ) -> ContainerMuxOptions:
-        """Get the options for a container in the mux job."""
-        return self._container_options.get(container, {})
+    def update_output_options(
+        self, options: dict[OutputOption, OptionValue]
+    ) -> None:
+        """Update the output options in-place."""
+        self._output_options.update(options)
+
+    def get_output_options(self) -> dict[OutputOption, OptionValue]:
+        """Return the stored output options."""
+        return self._output_options
+
+    def _is_container_referenced(self, container: info.Container) -> bool:
+        for track in self._track_order:
+            if track.container is container:
+                return True
+        return False
 
     def set_container_options(
         self,
         container: info.Container,
-        /,
-        **options: typing_extensions.Unpack[ContainerMuxOptions],
+        options: dict[ContainerOption, OptionValue],
     ) -> None:
-        """Replace the options for a container in the mux job."""
+        """Set options for the specified container, replacing any previously stored values."""
         self._container_options[container] = options
 
     def update_container_options(
         self,
         container: info.Container,
-        /,
-        **options: typing_extensions.Unpack[ContainerMuxOptions],
+        options: dict[ContainerOption, OptionValue],
     ) -> None:
-        """Replace the options for a container in the mux job."""
+        """Update options for the specified container in-place."""
         if container in self._container_options:
             self._container_options[container].update(options)
         else:
-            self._container_options[container] = options
+            self.set_container_options(container, options)
 
-    def _assert_stream_no_exist(self, stream: info.Track) -> None:
-        for existing_stream, _ in self._streams:
-            if stream is existing_stream:
-                raise exceptions.MuxDuplicateTrackFound(stream)
+    def get_container_options(
+        self, container: info.Container
+    ) -> dict[ContainerOption, OptionValue]:
+        """Return the stored options for the specified container."""
+        return self._container_options.get(container, {})
 
-    def _assert_stream_exist(self, stream: info.Track) -> None:
-        for existing_stream, _ in self._streams:
-            if stream is existing_stream:
-                break
+    def delete_container_options(self, container: info.Container) -> None:
+        """Delete any stored options for the specified container."""
+        if container in self._container_options:
+            del self._container_options[container]
+
+    def set_track_options(
+        self,
+        track: info.Track,
+        options: dict[TrackOption, OptionValue],
+    ) -> None:
+        """Set options for the specified track, replacing any previously stored values."""
+        self._track_options[track] = options
+
+    def update_track_options(
+        self,
+        track: info.Track,
+        options: dict[TrackOption, OptionValue],
+    ) -> None:
+        """Update options for the specified track in-place."""
+        if track in self._track_options:
+            self._track_options[track].update(options)
         else:
-            raise exceptions.MuxTrackNotFound(stream)
+            self.set_track_options(track, options)
 
-    def _get_stream_entry(
-        self, stream: info.Track
-    ) -> typing.Optional[_StreamMuxOptionPair]:
-        for entry in self._streams:
-            if entry[0] is stream:
-                return entry
+    def get_track_options(
+        self, track: info.Track
+    ) -> dict[TrackOption, OptionValue]:
+        """Return the stored options for the specified track."""
+        return self._track_options.get(track, {})
 
-    def append_stream(
+    def delete_track_options(self, track: info.Track) -> None:
+        """Delete any stored options for the specified track."""
+        if track in self._track_options:
+            del self._track_options[track]
+
+    def _is_track_referenced(self, track: info.Track) -> bool:
+        return track in self._track_order
+
+    def append_track(
         self,
-        stream: info.Track,
+        track: info.Track,
+        options: typing.Optional[dict[TrackOption, OptionValue]] = None,
+    ) -> None:
+        """Append a new track onto the output. Optionally, apply `options` to this track."""
+        # Raise an exception if the track already exists. We can't duplicate tracks
+        if self._is_track_referenced(track):
+            raise exceptions.MuxDuplicateTrackFound(track)
+        self._track_order.append(track)
+        if options:
+            self.set_track_options(track, options)
+
+    def append_all_tracks(
+        self,
+        container: info.Container,
         /,
-        **options: typing_extensions.Unpack[StreamMuxOptions],
+        container_options: typing.Optional[
+            dict[ContainerOption, OptionValue]
+        ] = None,
+        common_track_options: typing.Optional[
+            dict[TrackOption, OptionValue]
+        ] = None,
     ) -> None:
-        """Append a stream to be written to the output."""
-        self._assert_stream_no_exist(stream)
-        self._streams.append((stream, options))
+        """
+        Append all tracks from a container into the output.
 
-    def insert_stream(
+        Args:
+            container_options (optional): Options to apply to the container
+            common_track_options (optional): Options that will be applied to every
+                track copied from the container. Keep in mind that if you use this
+                _and_ you want to apply options individually afterwards that you
+                will need to use the `MuxJob.update_track_options` function instead
+                of `MuxJob.set_track_options` or else the common options applied
+                here will be removed.
+        """
+        if container_options:
+            self.set_container_options(container, container_options)
+
+        for track in container.tracks:
+            self.append_track(track, common_track_options)
+
+    def insert_track(self, index: int, track: info.Track) -> None:
+        """Insert a new track onto the output at a specific index."""
+        # Raise an exception if the track already exists. We can't duplicate tracks
+        if self._is_track_referenced(track):
+            raise exceptions.MuxDuplicateTrackFound(track)
+        self._track_order.insert(index, track)
+
+    def remove_track(
         self,
-        index: int,
-        stream: info.Track,
+        track: info.Track,
         /,
-        **options: typing_extensions.Unpack[StreamMuxOptions],
+        cleanup_track_options: bool = True,
+        cleanup_container_options: bool = True,
     ) -> None:
-        """Insert a stream at a specific index to be written to the output."""
-        self._assert_stream_no_exist(stream)
-        self._streams.insert(index, (stream, options))
+        """
+        Remove a track from the output.
 
-    def remove_stream(
-        self, stream: info.Track, no_exist_okay: bool = True
-    ) -> None:
-        """Remove a previously added stream. Fails silently if stream doesn't exist."""
-        if not no_exist_okay:
-            self._assert_stream_exist(stream)
-        if entry := self._get_stream_entry(stream):
-            self._streams.remove(entry)
+        Args:
+            cleanup_track_options (optional): Cleans up stored option values for this track. This is to prevent unexpected
+                option values if the track is added again. Defaults to `True`.
+            cleanup_container_options (optional): Cleans up stored container options IF AND ONLY IF this was the last
+                track referencing the container. Useful to prevent unexpected option values if a track from this
+                container is added again. Defaults to `True`.
+        """
+        # Raise an exception if the track DOES NOT exist
+        if not self._is_track_referenced(track):
+            raise exceptions.MuxTrackNotFound(track)
+        self._track_order.remove(track)
 
-    def get_stream_options(
+        if cleanup_track_options:
+            self.delete_track_options(track)
+
+        container = track.container
+        if (
+            container
+            and cleanup_container_options
+            and not self._is_container_referenced(container)
+        ):
+            self.delete_container_options(container)
+
+    def _format_option(
         self,
-        stream: info.Track,
-    ) -> StreamMuxOptions:
-        """Get the options for a stream in the mux job."""
-        self._assert_stream_exist(stream)
-        existing_entry = self._get_stream_entry(stream)
-        assert existing_entry is not None
-        return existing_entry[1]
-
-    def set_stream_options(
-        self,
-        stream: info.Track,
-        /,
-        **options: typing_extensions.Unpack[StreamMuxOptions],
-    ) -> None:
-        """Replace the options for a stream in the mux job."""
-        self._assert_stream_exist(stream)
-        if existing_entry := self._get_stream_entry(stream):
-            index = self._streams.index(existing_entry)
-            self._streams[index] = (existing_entry[0], options)
-
-    def update_stream_options(
-        self,
-        stream: info.Track,
-        /,
-        **options: typing_extensions.Unpack[StreamMuxOptions],
-    ) -> None:
-        """Replace the options for a stream in the mux job."""
-        self._assert_stream_exist(stream)
-        if existing_entry := self._get_stream_entry(stream):
-            existing_entry[1].update(options)
+        option_type: _AnyOption,
+        value: OptionValue,
+        track: typing.Optional[info.Track] = None,
+    ) -> typing.Generator[str, None, None]:
+        if option_type not in _option_formatters:
+            raise RuntimeError(
+                f"There is no formatter defined for mux option: {option_type}"
+            )
+        formatter = _option_formatters[option_type]
+        yield from formatter.format(value, track)
 
     def _generate_container_arguments(
         self, container: info.Container
     ) -> typing.Generator[str, None, None]:
         options = self.get_container_options(container)
 
-        if options.get("no_chapters", False):
-            yield "--no-chapters"
+        for option_type, option_value in options.items():
+            yield from self._format_option(option_type, option_value)
 
-        if options.get("no_attachments", False):
-            yield "--no-attachments"
-
-        if options.get("no_global_tags", False):
-            yield "--no-global-tags"
-
-        # Finally, yield the filename
         yield container.format.filename
 
-    def _generate_stream_arguments(
-        self, stream: info.Track, options: StreamMuxOptions
+    def _generate_track_arguments(
+        self, track: info.Track
     ) -> typing.Generator[str, None, None]:
-        # String options
-        yield from _format_option_id_colon_value(
-            "--track-name", stream.index, options.get("title", None)
-        )
-        yield from _format_option_id_colon_value(
-            "--language", stream.index, options.get("language", None)
-        )
-        yield from _format_option_id_colon_value(
-            "--sub-charset", stream.index, options.get("charset", None)
-        )
+        options = self.get_track_options(track)
 
-        # Boolean options
-        yield from _format_option_id_colon_boolean(
-            "--default-track-flag", stream.index, options.get("default", None)
-        )
-        yield from _format_option_id_colon_boolean(
-            "--track-enabled-flag", stream.index, options.get("enabled", None)
-        )
-        yield from _format_option_id_colon_boolean(
-            "--forced-display-flag", stream.index, options.get("forced", None)
-        )
-        yield from _format_option_id_colon_boolean(
-            "--hearing-impaired-flag",
-            stream.index,
-            options.get("hearing_impaired", None),
-        )
-        yield from _format_option_id_colon_boolean(
-            "--visual-impaired-flag",
-            stream.index,
-            options.get("visual_impaired", None),
-        )
-        yield from _format_option_id_colon_boolean(
-            "--text-descriptions-flag",
-            stream.index,
-            options.get("text_descriptions", None),
-        )
-        yield from _format_option_id_colon_boolean(
-            "--original-flag",
-            stream.index,
-            options.get("original_language", None),
-        )
-        yield from _format_option_id_colon_boolean(
-            "--commentary-flag", stream.index, options.get("commentary", None)
-        )
-
-        # ID options
-        yield from _format_option_id(
-            "--reduce-to-core",
-            stream.index,
-            options.get("reduce_to_core", None),
-        )
+        for option_type, option_value in options.items():
+            yield from self._format_option(option_type, option_value, track)
 
     def _generate_output_arguments(self) -> typing.Generator[str, None, None]:
         yield "--output"
         yield str(self.output)
 
         options = self.get_output_options()
-        if (title := options.get("title", None)) is not None:
-            yield "--title"
-            yield title
+        for option_type, option_value in options.items():
+            yield from self._format_option(option_type, option_value)
 
     def _generate_command_arguments(self) -> typing.Generator[str, None, None]:
         # To being with, we yield argument for the file output
         yield from self._generate_output_arguments()
 
-        # We have to keep track of the absolute order of streams and containers
-        absolute_order: list[info.Track] = []
+        # We have to keep track of the absolute order of containers
         container_order: list[info.Container] = []
 
-        # Group all of the source streams by their container
-        streams_by_container: dict[
-            info.Container, list[_StreamMuxOptionPair]
-        ] = {}
-        for stream_pair in self._streams:
-            stream = stream_pair[0]
-            container = stream.container
+        # Group all of the source tracks by their container
+        tracks_by_container: dict[info.Container, list[info.Track]] = {}
+        for track in self._track_order:
+            container = track.container
 
-            assert container is not None
-            if container not in streams_by_container:
-                streams_by_container[container] = []
+            # Ensure that the track has a parent container
+            if container is None:
+                raise exceptions.TrackNoParentContainer(track)
 
-            streams_by_container[container].append(stream_pair)
-            absolute_order.append(stream)
+            if container not in tracks_by_container:
+                tracks_by_container[container] = []
+
+            tracks_by_container[container].append(track)
 
         # Iterate through each source container and generate all arguments
-        for container, stream_pairs in streams_by_container.items():
+        for container, tracks in tracks_by_container.items():
             # Start by sorting the streams by type
-            stream_pairs_by_type: dict[
-                info.TrackType, list[_StreamMuxOptionPair]
-            ] = {
-                stream_type: [
-                    pair
-                    for pair in stream_pairs
-                    if pair[0].type is stream_type
+            tracks_by_type: dict[info.TrackType, list[info.Track]] = {
+                track_type: [
+                    track for track in tracks if track.type is track_type
                 ]
-                for stream_type in _container_options_for_type.keys()
+                for track_type in _container_options_for_type.keys()
             }
 
             # Iterate through each stream type and generator arguments
-            for stream_type, stream_pairs in stream_pairs_by_type.items():
-                options = _container_options_for_type[stream_type]
+            for track_type, tracks in tracks_by_type.items():
+                options = _container_options_for_type[track_type]
                 select_option = options["select"]
                 exclude_option = options["exclude"]
 
                 # If there are no stream of this type, yield the exclude option
-                if not stream_pairs:
+                if not tracks:
                     yield exclude_option
                     continue
 
                 yield select_option
-                yield ",".join(
-                    [str(stream.index) for stream, _ in stream_pairs]
-                )
+                yield ",".join([str(track.index) for track in tracks])
 
                 # Yield arguments for the streams
-                for stream, stream_options in stream_pairs:
-                    yield from self._generate_stream_arguments(
-                        stream, stream_options
-                    )
+                for track in tracks:
+                    yield from self._generate_track_arguments(track)
 
             # Yield arguments for the container
             yield from self._generate_container_arguments(container)
@@ -384,12 +478,12 @@ class MuxJob:
             if container not in container_order:
                 container_order.append(container)
 
-        # Fianlly, generate and yield the track order
+        # Finally, generate and yield the track order
         stream_order_pairs: list[str] = []
-        for stream in absolute_order:
-            assert stream.container is not None
-            container_idx = container_order.index(stream.container)
-            stream_order_pairs.append(f"{container_idx}:{stream.index}")
+        for track in self._track_order:
+            assert track.container is not None
+            container_idx = container_order.index(track.container)
+            stream_order_pairs.append(f"{container_idx}:{track.index}")
 
         yield "--track-order"
         yield ",".join(stream_order_pairs)
@@ -397,4 +491,4 @@ class MuxJob:
     def run(self, fg=True):
         """Run the mux job command."""
         arguments = list(self._generate_command_arguments())
-        return mkvmerge(*arguments, _fg=fg)
+        return _mkvmerge(*arguments, _fg=fg)
