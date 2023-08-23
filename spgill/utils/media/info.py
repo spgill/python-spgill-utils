@@ -98,7 +98,7 @@ class TrackSelectorValues(typing.TypedDict, total=True):
     index: int
     typeIndex: int
     lang: str
-    title: str
+    name: str
     codec: str
 
     # Convenience flags
@@ -192,8 +192,13 @@ class Track(pydantic.BaseModel):
         return self.tags.get("language", None)
 
     @property
-    def title(self) -> typing.Optional[str]:
-        """Convenience property for reading the title tag of this track."""
+    def name(self) -> typing.Optional[str]:
+        """
+        Convenience property for reading the name of this track.
+
+        This is actually stored in the tags under "title", but we prefer Matroska
+        toolchain naming conventions which refer to tracks having "names" not "titles".
+        """
         return self.tags.get("title", None)
 
     @property
@@ -307,7 +312,7 @@ class Track(pydantic.BaseModel):
             "index": self.index,
             "typeIndex": self.type_index,
             "lang": self.language or "",
-            "title": self.title or "",
+            "name": self.name or "",
             "codec": self.codec_name or "",
             # Convenience flags
             "isVideo": self.type == TrackType.Video,
