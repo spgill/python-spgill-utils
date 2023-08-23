@@ -19,12 +19,6 @@ from . import exceptions, info, tools
 _mkvmerge = sh.Command("mkvmerge")
 
 
-class _OptionType(enum.Enum):
-    String = enum.auto()
-    Boolean = enum.auto()
-    Unary = enum.auto()
-
-
 OptionValue = typing.Union[str, bool, pathlib.Path]
 """Accepted value types for track/container/global mux options."""
 
