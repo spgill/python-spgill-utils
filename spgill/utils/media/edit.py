@@ -295,7 +295,7 @@ class EditJob:
 
     def _generate_command_arguments(self) -> typing.Generator[str, None, None]:
         # Start with the filename
-        yield self._container.format.filename
+        yield str(self._container.format.filename)
 
         yield from self._generate_tag_arguments()
         yield from self._generate_chapter_arguments()
