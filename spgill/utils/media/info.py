@@ -450,7 +450,7 @@ class Container(pydantic.BaseModel):
     @classmethod
     def open(cls, path: pathlib.Path) -> "Container":
         """Open a media container by its path and return a new `Container` instance."""
-        raw = _ffprobe(
+        raw_json = _ffprobe(
             "-hide_banner",
             "-v",
             "quiet",
@@ -464,21 +464,20 @@ class Container(pydantic.BaseModel):
             "-show_chapters",
             path,
         )
-        assert isinstance(raw, str)
+        assert isinstance(raw_json, str)
 
         # Parse the JSON into a new instance
-        # inst = Container.from_json(raw)
-        inst = Container.parse_raw(raw)
-        assert not isinstance(inst, list)
+        instance = Container.model_validate_json(raw_json)
+        assert not isinstance(instance, list)
 
         # Parse the json to a python object and store it in the raw attribute
-        inst._raw = json.loads(raw)
+        instance._raw = json.loads(raw_json)
 
         # Bind all the tracks back to this container
-        for track in inst.tracks:
-            track._bind(inst)
+        for track in instance.tracks:
+            track._bind(instance)
 
-        return inst
+        return instance
 
     @staticmethod
     def select_tracks_from_list(  # noqa: C901
