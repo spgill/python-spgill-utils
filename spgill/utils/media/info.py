@@ -7,8 +7,6 @@ but some operations can only be performed on Matroska files.
 
 # stdlib imports
 import enum
-import functools
-import json
 import pathlib
 import re
 import typing
@@ -256,7 +254,7 @@ class Track(pydantic.BaseModel):
                 i += 1
         return i
 
-    @functools.cached_property
+    @property
     def hdr_formats(self) -> set[HDRFormat]:
         """
         Property containing a set of the HDR formats detected in the track.
@@ -278,41 +276,31 @@ class Track(pydantic.BaseModel):
 
         formats: set[HDRFormat] = set()
 
-        # Detecting HDR10 and HLG is just a matter of reading the video track's color transfer
+        # Detecting HDR10 and HLG is just a matter of reading the video track's
+        # color transfer attribute
         if self.color_transfer == "smpte2084":
             formats.add(HDRFormat.HDR10)
         elif self.color_transfer == "arib-std-b67":
             formats.add(HDRFormat.HLG)
 
-        # To detect the other formats, we'll have to run a probe on the track
-        # through the first couple of frames.
-        results = _ffprobe(
-            "-hide_banner",
-            "-loglevel",
-            "warning",
-            "-select_streams",
-            f"v:{self.index}",
-            "-print_format",
-            "json",
-            "-show_frames",
-            "-read_intervals",
-            "%+#10",
-            "-show_entries",
-            "frame=color_space,color_primaries,color_transfer,side_data_list,pix_fmt",
-            "-i",
-            self.container.format.filename,
-        )
-        assert isinstance(results, str)
+        # Dolby vision and HDR10+ can be detected via the frame side data
+        if len(
+            list(
+                self.container.get_frame_side_data(
+                    self.index, SideDataType.DolbyVisionRPU
+                )
+            )
+        ):
+            formats.add(HDRFormat.DolbyVision)
 
-        # Search through the side data list entries for any that indicate
-        # a particular HDR format.
-        for frame in json.loads(results).get("frames", []):
-            for side_data_entry in frame.get("side_data_list", []):
-                side_data_type = side_data_entry.get("side_data_type", None)
-                if side_data_type == SideDataType.DolbyVisionRPU.value:
-                    formats.add(HDRFormat.DolbyVision)
-                if side_data_type == SideDataType.HDRDynamicMeta.value:
-                    formats.add(HDRFormat.HDR10Plus)
+        if len(
+            list(
+                self.container.get_frame_side_data(
+                    self.index, SideDataType.HDRDynamicMeta
+                )
+            )
+        ):
+            formats.add(HDRFormat.HDR10Plus)
 
         return formats
 
@@ -425,6 +413,12 @@ class ContainerFormat(pydantic.BaseModel):
     tags: dict[str, str] = pydantic.Field(default_factory=dict)
 
 
+class ContainerFrameData(pydantic.BaseModel):
+    track_index: int = pydantic.Field(alias="stream_index", default=0)
+
+    side_data_list: list[dict[str, typing.Any]]
+
+
 class Container(pydantic.BaseModel):
     """Do NOT instantiate this class manually, use the `Container.open()` class method instead."""
 
@@ -434,8 +428,8 @@ class Container(pydantic.BaseModel):
     )  # We alias this to "streams", because we prefer mkv terminology
     chapters: list[Chapter]
 
-    _raw: typing.Optional[dict]
-    """Raw JSON probe data for this container, parsed to a Python object with no typings."""
+    frames: list[ContainerFrameData]
+    """List of frame data captured from `ffprobe`. Only useful for identifying frame side data."""
 
     def __hash__(self) -> int:
         return hash(self.format.filename.absolute())
@@ -462,14 +456,17 @@ class Container(pydantic.BaseModel):
             "-hide_banner",
             "-v",
             "quiet",
-            # Leave these args here in case they need to be added again later
-            # "-select_streams",
-            # "v",
             "-print_format",
             "json",
             "-show_format",
             "-show_streams",
             "-show_chapters",
+            "-show_frames",
+            "-read_intervals",
+            "%+#10",
+            "-show_entries",
+            "frame=stream_index,side_data_list",
+            "-i",
             path,
         )
         assert isinstance(raw_json, str)
@@ -477,9 +474,6 @@ class Container(pydantic.BaseModel):
         # Parse the JSON into a new instance
         instance = Container.model_validate_json(raw_json)
         assert not isinstance(instance, list)
-
-        # Parse the json to a python object and store it in the raw attribute
-        instance._raw = json.loads(raw_json)
 
         # Bind all the tracks back to this container
         for track in instance.tracks:
@@ -719,6 +713,16 @@ class Container(pydantic.BaseModel):
     def track_belongs_to_container(self, track: Track) -> bool:
         """Return `True` if the given track exists within this container."""
         return track in self.tracks
+
+    def get_frame_side_data(
+        self, track_index: int, data_type: SideDataType
+    ) -> typing.Generator[dict[str, typing.Any], None, None]:
+        """For a given track index, yield all side data entries that match the given type."""
+        for frame in self.frames:
+            if frame.track_index == track_index:
+                for side_data in frame.side_data_list:
+                    if side_data.get("side_data_type", "") == data_type.value:
+                        yield side_data
 
 
 _default_cli_extensions: list[str] = [".mkv", ".mp4", ".m4v", ".wmv", ".avi"]
