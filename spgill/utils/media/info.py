@@ -450,9 +450,8 @@ class Container(pydantic.BaseModel):
         return groups
 
     @classmethod
-    def open(cls, path: pathlib.Path) -> "Container":
-        """Open a media container by its path and return a new `Container` instance."""
-        raw_json = _ffprobe(
+    def _probe(cls, path: pathlib.Path) -> str:
+        probe_result = _ffprobe(
             "-hide_banner",
             "-v",
             "quiet",
@@ -469,7 +468,13 @@ class Container(pydantic.BaseModel):
             "-i",
             path,
         )
-        assert isinstance(raw_json, str)
+        assert isinstance(probe_result, str)
+        return probe_result
+
+    @classmethod
+    def open(cls, path: pathlib.Path) -> "Container":
+        """Open a media container by its path and return a new `Container` instance."""
+        raw_json = cls._probe(path)
 
         # Parse the JSON into a new instance
         instance = Container.model_validate_json(raw_json)
