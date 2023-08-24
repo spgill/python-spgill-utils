@@ -24,7 +24,7 @@ import typer
 
 # local imports
 from ..walk import walk
-from . import exceptions
+from . import exceptions, tools
 
 _ffprobe = sh.Command("ffprobe")
 _mkvextract = sh.Command("mkvextract")
@@ -255,7 +255,7 @@ class Track(pydantic.BaseModel):
         return i
 
     @property
-    def hdr_formats(self) -> set[HDRFormat]:
+    def hdr_formats(self) -> typing.Optional[set[HDRFormat]]:
         """
         Property containing a set of the HDR formats detected in the track.
 
@@ -269,7 +269,7 @@ class Track(pydantic.BaseModel):
         # video track we will just return an empty set instead of throwing an
         # exception. This is just a cleaner operation in the end.
         if self.type is not TrackType.Video:
-            return set()
+            return None
 
         if self.container is None:
             raise exceptions.TrackNoParentContainer(self)
@@ -311,7 +311,83 @@ class Track(pydantic.BaseModel):
 
         See `Track.hdr_formats` for warnings on access delay time.
         """
-        return bool(len(self.hdr_formats))
+        return bool(self.hdr_formats)
+
+    @property
+    def hdr_master_display(self) -> typing.Optional[str]:
+        """
+        Return a string representing the video track's mastering display metadata.
+        This string can be passed to libx265's `master-display` option.
+        """
+        if self.type is not TrackType.Video:
+            return None
+
+        if self.container is None:
+            raise exceptions.TrackNoParentContainer(self)
+
+        # First we fetch the master display side data
+        found_side_data = list(
+            self.container.get_frame_side_data(
+                self.index, SideDataType.MasterDisplayMeta
+            )
+        )
+        if not len(found_side_data):
+            return None
+        display_data = found_side_data[0]
+
+        # Read all of the display master values and convert them to compatible int values
+        red_x = tools.parse_display_fraction(display_data["red_x"], 50000)
+        red_y = tools.parse_display_fraction(display_data["red_y"], 50000)
+
+        green_x = tools.parse_display_fraction(display_data["green_x"], 50000)
+        green_y = tools.parse_display_fraction(display_data["green_y"], 50000)
+
+        blue_x = tools.parse_display_fraction(display_data["blue_x"], 50000)
+        blue_y = tools.parse_display_fraction(display_data["blue_y"], 50000)
+
+        white_point_x = tools.parse_display_fraction(
+            display_data["white_point_x"], 50000
+        )
+        white_point_y = tools.parse_display_fraction(
+            display_data["white_point_y"], 50000
+        )
+
+        min_luminance = tools.parse_display_fraction(
+            display_data["min_luminance"], 10000
+        )
+        max_luminance = tools.parse_display_fraction(
+            display_data["max_luminance"], 10000
+        )
+
+        # Return them all as a formatted string
+        return f"G({green_x},{green_y})B({blue_x},{blue_y})R({red_x},{red_y})WP({white_point_x},{white_point_y})L({max_luminance},{min_luminance})"
+
+    @property
+    def hdr_content_light_level(self) -> typing.Optional[str]:
+        """
+        Return a string representing the video track's content light level data.
+        This string can be passed to libx265's `max-cll` option.
+        """
+        if self.type is not TrackType.Video:
+            return None
+
+        if self.container is None:
+            raise exceptions.TrackNoParentContainer(self)
+
+        # First we fetch the master display side data
+        found_side_data = list(
+            self.container.get_frame_side_data(
+                self.index, SideDataType.ContentLightMeta
+            )
+        )
+        if not len(found_side_data):
+            return None
+        light_level_data = found_side_data[0]
+
+        # Parse the metadata fields and return a formatted string
+        max_content_light = light_level_data.get("max_content", 0)
+        max_average_light = light_level_data.get("max_average", 0)
+        return f"{max_content_light},{max_average_light}"
 
     def __repr__(self) -> str:
         attributes = ["index", "type", "codec_name", "name", "language"]
@@ -319,9 +395,6 @@ class Track(pydantic.BaseModel):
         for name in attributes:
             formatted_attributes.append(f"{name}={getattr(self, name)!r}")
         return f"{type(self).__name__}({', '.join(formatted_attributes)})"
-
-    # def model_post_init(self, __context):
-    #     self.container: typing.Optional["Container"] = None
 
     def _bind(self, container: "Container") -> None:
         self.container = container
@@ -352,8 +425,8 @@ class Track(pydantic.BaseModel):
             "isHEVC": "hevc" in (self.codec_name or "").lower(),
             "isAVC": "avc" in (self.codec_name or "").lower(),
             "isHDR": self.is_hdr,
-            "isDoVi": HDRFormat.DolbyVision in self.hdr_formats,
-            "isHDR10Plus": HDRFormat.HDR10Plus in self.hdr_formats,
+            "isDoVi": HDRFormat.DolbyVision in (self.hdr_formats or set()),
+            "isHDR10Plus": HDRFormat.HDR10Plus in (self.hdr_formats or set()),
             # Audio track flags
             "isAAC": "aac" in (self.codec_name or "").lower(),
             "isAC3": "_ac3" in (self.codec_name or "").lower(),
@@ -833,7 +906,7 @@ def _main(
 
             hdr = ""
             if track.type == TrackType.Video:
-                hdr = ",".join([f.name for f in track.hdr_formats])
+                hdr = ",".join([f.name for f in (track.hdr_formats or set())])
 
             table.add_row(
                 str(path),

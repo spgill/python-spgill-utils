@@ -4,6 +4,7 @@ Module containing miscellaneous utility functions that don't belong anywhere els
 
 ### stdlib imports
 import pathlib
+import re
 
 ### vendor imports
 import charset_normalizer
@@ -53,3 +54,20 @@ def guess_subtitle_charset(
         )
 
     return encoding
+
+
+_display_color_pattern = re.compile(r"^(\d+)\/(\d+)$")
+
+
+def parse_display_fraction(value: str, ideal_denominator: int) -> int:
+    """
+    Utility function to parse a master display fraction (e.g. "13250/50000") and
+    match the numerator to an ideal denominator value.
+    """
+    if match := _display_color_pattern.match(value):
+        numerator, denominator = (int(n) for n in match.groups())
+
+        if denominator != ideal_denominator:
+            return int((ideal_denominator / denominator) * numerator)
+        return numerator
+    return 0
