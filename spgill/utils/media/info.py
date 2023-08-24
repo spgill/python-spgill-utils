@@ -255,7 +255,7 @@ class Track(pydantic.BaseModel):
         return i
 
     @property
-    def hdr_formats(self) -> typing.Optional[set[HDRFormat]]:
+    def hdr_formats(self) -> set[HDRFormat]:
         """
         Property containing a set of the HDR formats detected in the track.
 
@@ -269,7 +269,7 @@ class Track(pydantic.BaseModel):
         # video track we will just return an empty set instead of throwing an
         # exception. This is just a cleaner operation in the end.
         if self.type is not TrackType.Video:
-            return None
+            return set()
 
         if self.container is None:
             raise exceptions.TrackNoParentContainer(self)
