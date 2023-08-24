@@ -9,6 +9,7 @@ import typing
 
 ### vendor imports
 import sh
+import typing_extensions
 
 ### local imports
 import spgill.utils.mux.info as info
@@ -35,6 +36,7 @@ class EditTagSelector(enum.Enum):
     Global = "global"
 
 
+@typing_extensions.deprecated
 class EditJob:
     # List of track types accepted as mux sources
     _acceptedTrackTypes: list[info.MediaTrackType] = [

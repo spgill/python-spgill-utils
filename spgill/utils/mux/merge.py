@@ -9,6 +9,7 @@ import typing
 
 ### vendor imports
 import sh
+import typing_extensions
 
 ### local imports
 import spgill.utils.mux.info as info
@@ -89,6 +90,7 @@ class MergeTrackOptions(typing.TypedDict, total=False):
 MergeTrackEntry = tuple[info.MediaTrack, MergeTrackOptions]
 
 
+@typing_extensions.deprecated
 class MergeJob:
     # List of track types accepted as mux sources
     _acceptedTrackTypes: list[info.MediaTrackType] = [
