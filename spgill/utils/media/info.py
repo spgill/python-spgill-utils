@@ -489,7 +489,9 @@ class ContainerFormat(pydantic.BaseModel):
 class ContainerFrameData(pydantic.BaseModel):
     track_index: int = pydantic.Field(alias="stream_index", default=0)
 
-    side_data_list: list[dict[str, typing.Any]]
+    side_data_list: list[dict[str, typing.Any]] = pydantic.Field(
+        default_factory=list
+    )
 
 
 class Container(pydantic.BaseModel):
