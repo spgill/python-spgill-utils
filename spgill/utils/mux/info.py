@@ -14,7 +14,6 @@ import typing
 ### vendor imports
 import charset_normalizer
 import sh
-import typing_extensions
 
 
 # Commands
@@ -55,7 +54,6 @@ def _convertToZeroIndex(value: str) -> int:
         return -1
 
 
-@typing_extensions.deprecated
 class MediaTrackType(enum.Enum):
     """Enum representing the type of content in the media track."""
 
@@ -66,7 +64,6 @@ class MediaTrackType(enum.Enum):
     Subtitles = "Text"
 
 
-@typing_extensions.deprecated
 class MediaTrackSelectorValues(typing.TypedDict):
     # Convenience values
     track: "MediaTrack"
@@ -107,7 +104,6 @@ class MediaTrackSelectorValues(typing.TypedDict):
 
 
 @dataclasses.dataclass(unsafe_hash=True)
-@typing_extensions.deprecated
 class MediaTrack:
     """A single track with a `MediaFile` object."""
 
@@ -345,7 +341,6 @@ class MediaTrack:
         }
 
 
-@typing_extensions.deprecated
 class MediaFile(object):
     """Object representing a single media container file."""
 
@@ -613,7 +608,6 @@ class MediaFile(object):
         )
 
 
-@typing_extensions.deprecated
 class SRTFile(MediaFile):
     """
     SRT files are tricky to deal with. They aren't always detected as valid media
