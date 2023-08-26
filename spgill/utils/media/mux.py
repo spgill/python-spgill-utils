@@ -19,7 +19,7 @@ from . import exceptions, info, tools
 _mkvmerge = sh.Command("mkvmerge")
 
 
-OptionValue = typing.Union[str, bool, pathlib.Path]
+OptionValueType = typing.Union[str, bool, pathlib.Path]
 """Accepted value types for track/container/global mux options."""
 
 
@@ -28,7 +28,7 @@ class _BaseOptionFormatter:
         self.option = option
 
     def format(
-        self, value: OptionValue, track: typing.Optional[info.Track]
+        self, value: OptionValueType, track: typing.Optional[info.Track]
     ) -> list[str]:
         return [self.option]
 
@@ -40,7 +40,7 @@ class _UnaryOptionFormatter(_BaseOptionFormatter):
 
 class _BooleanOptionFormatter(_BaseOptionFormatter):
     def format(
-        self, value: OptionValue, track: typing.Optional[info.Track]
+        self, value: OptionValueType, track: typing.Optional[info.Track]
     ) -> list[str]:
         assert isinstance(value, bool)
         assert track is not None
@@ -49,7 +49,7 @@ class _BooleanOptionFormatter(_BaseOptionFormatter):
 
 class _StringOptionFormatter(_BaseOptionFormatter):
     def format(
-        self, value: OptionValue, track: typing.Optional[info.Track]
+        self, value: OptionValueType, track: typing.Optional[info.Track]
     ) -> list[str]:
         assert isinstance(value, (str, pathlib.Path))
         assert track is not None
@@ -61,6 +61,9 @@ class OutputOption(enum.Enum):
 
     Title = enum.auto()
     """Sets the general title for the output file, e.g. the movie name."""
+
+
+OutputOptionDict = dict[OutputOption, OptionValueType]
 
 
 class ContainerOption(enum.Enum):
@@ -77,6 +80,9 @@ class ContainerOption(enum.Enum):
 
     NoTrackTags = enum.auto()
     """Don't copy any track specific tags from this file."""
+
+
+ContainerOptionDict = dict[ContainerOption, OptionValueType]
 
 
 class TrackOption(enum.Enum):
@@ -123,6 +129,9 @@ class TrackOption(enum.Enum):
     # Unary flags
     ReduceToCore = enum.auto()
     """Drop all HD extensions from an audio track and keep only its lossy core. This works only for DTS tracks."""
+
+
+TrackOptionDict = dict[TrackOption, OptionValueType]
 
 
 _AnyOption = typing.Union[OutputOption, ContainerOption, TrackOption]
@@ -188,20 +197,16 @@ class MuxJob:
     output: pathlib.Path
     """File path of the output container."""
 
-    _output_options: dict[OutputOption, OptionValue]
-    _container_options: dict[
-        info.Container, dict[ContainerOption, OptionValue]
-    ]
-    _track_options: dict[info.Track, dict[TrackOption, OptionValue]]
+    _output_options: OutputOptionDict
+    _container_options: dict[info.Container, ContainerOptionDict]
+    _track_options: dict[info.Track, TrackOptionDict]
     _track_order: list[info.Track]
 
     def __init__(
         self,
         output: pathlib.Path,
         /,
-        output_options: typing.Optional[
-            dict[OutputOption, OptionValue]
-        ] = None,
+        output_options: typing.Optional[OutputOptionDict] = None,
     ) -> None:
         self.output = output
 
@@ -211,19 +216,15 @@ class MuxJob:
         self._track_options = {}
         self._track_order = []
 
-    def set_output_options(
-        self, options: dict[OutputOption, OptionValue]
-    ) -> None:
+    def set_output_options(self, options: OutputOptionDict) -> None:
         """Set the output options, replacing any previously stored values."""
         self._output_options = options
 
-    def update_output_options(
-        self, options: dict[OutputOption, OptionValue]
-    ) -> None:
+    def update_output_options(self, options: OutputOptionDict) -> None:
         """Update the output options in-place."""
         self._output_options.update(options)
 
-    def get_output_options(self) -> dict[OutputOption, OptionValue]:
+    def get_output_options(self) -> OutputOptionDict:
         """Return the stored output options."""
         return self._output_options
 
@@ -234,17 +235,13 @@ class MuxJob:
         return False
 
     def set_container_options(
-        self,
-        container: info.Container,
-        options: dict[ContainerOption, OptionValue],
+        self, container: info.Container, options: ContainerOptionDict
     ) -> None:
         """Set options for the specified container, replacing any previously stored values."""
         self._container_options[container] = options
 
     def update_container_options(
-        self,
-        container: info.Container,
-        options: dict[ContainerOption, OptionValue],
+        self, container: info.Container, options: ContainerOptionDict
     ) -> None:
         """Update options for the specified container in-place."""
         if container in self._container_options:
@@ -254,7 +251,7 @@ class MuxJob:
 
     def get_container_options(
         self, container: info.Container
-    ) -> dict[ContainerOption, OptionValue]:
+    ) -> ContainerOptionDict:
         """Return the stored options for the specified container."""
         return self._container_options.get(container, {})
 
@@ -266,7 +263,7 @@ class MuxJob:
     def set_track_options(
         self,
         track: info.Track,
-        options: dict[TrackOption, OptionValue],
+        options: TrackOptionDict,
     ) -> None:
         """Set options for the specified track, replacing any previously stored values."""
         self._track_options[track] = options
@@ -274,7 +271,7 @@ class MuxJob:
     def update_track_options(
         self,
         track: info.Track,
-        options: dict[TrackOption, OptionValue],
+        options: TrackOptionDict,
     ) -> None:
         """Update options for the specified track in-place."""
         if track in self._track_options:
@@ -282,9 +279,7 @@ class MuxJob:
         else:
             self.set_track_options(track, options)
 
-    def get_track_options(
-        self, track: info.Track
-    ) -> dict[TrackOption, OptionValue]:
+    def get_track_options(self, track: info.Track) -> TrackOptionDict:
         """Return the stored options for the specified track."""
         return self._track_options.get(track, {})
 
@@ -299,7 +294,7 @@ class MuxJob:
     def append_track(
         self,
         track: info.Track,
-        options: typing.Optional[dict[TrackOption, OptionValue]] = None,
+        options: typing.Optional[TrackOptionDict] = None,
     ) -> None:
         """Append a new track onto the output. Optionally, apply `options` to this track."""
         # Raise an exception if the track already exists. We can't duplicate tracks
@@ -312,7 +307,7 @@ class MuxJob:
     def append_srt_track(
         self,
         container: info.Container,
-        options: typing.Optional[dict[TrackOption, OptionValue]] = None,
+        options: typing.Optional[TrackOptionDict] = None,
     ) -> None:
         """
         Convenience function for appending an SRT container to a mux job.
@@ -337,12 +332,8 @@ class MuxJob:
         self,
         container: info.Container,
         /,
-        container_options: typing.Optional[
-            dict[ContainerOption, OptionValue]
-        ] = None,
-        common_track_options: typing.Optional[
-            dict[TrackOption, OptionValue]
-        ] = None,
+        container_options: typing.Optional[ContainerOptionDict] = None,
+        common_track_options: typing.Optional[TrackOptionDict] = None,
     ) -> None:
         """
         Append all tracks from a container into the output.
@@ -411,7 +402,7 @@ class MuxJob:
                 (current_options.get(TrackOption.Name, track.name) or "")
             ).lower()
 
-            new_options: dict[TrackOption, OptionValue] = {}
+            new_options: TrackOptionDict = {}
 
             if "forced" in name:
                 new_options[TrackOption.Forced] = True
@@ -456,7 +447,7 @@ class MuxJob:
                         )
                     ).lower()
 
-                    new_options: dict[TrackOption, OptionValue] = {}
+                    new_options: TrackOptionDict = {}
 
                     # Determine values of flags based on the current stored value
                     # in the track OR currently stored mux options
@@ -525,7 +516,7 @@ class MuxJob:
         # Iterate through each output track and assign names based on guidelines
         for track in self._track_order:
             current_options = self.get_track_options(track)
-            new_options: dict[TrackOption, OptionValue] = {}
+            new_options: TrackOptionDict = {}
 
             name = str(
                 (current_options.get(TrackOption.Name, track.name) or "")
@@ -638,7 +629,7 @@ class MuxJob:
     def _format_option(
         self,
         option_type: _AnyOption,
-        value: OptionValue,
+        value: OptionValueType,
         track: typing.Optional[info.Track] = None,
     ) -> typing.Generator[str, None, None]:
         if option_type not in _option_formatters:
