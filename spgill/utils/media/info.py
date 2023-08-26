@@ -904,7 +904,10 @@ def _main(
                     resolution += "p"
 
                 if track.avg_frame_rate:
-                    resolution += str(round(eval(track.avg_frame_rate), 2))
+                    try:
+                        resolution += str(round(eval(track.avg_frame_rate), 2))
+                    except ZeroDivisionError:
+                        pass
 
             hdr = ""
             if track.type == TrackType.Video:
