@@ -1,6 +1,7 @@
 ### stdlib imports
 from collections.abc import Iterable
 import pathlib
+import typing
 
 
 def walk(
@@ -59,3 +60,88 @@ def walk(
 
     if not topDown:
         yield top, dirs, nondirs
+
+
+def find_files_by_suffix(
+    sources: list[pathlib.Path],
+    /,
+    suffixes: typing.Optional[list[str]] = None,
+    recurse: bool = True,
+    sort: bool = False,
+    prevent_duplicates: bool = True,
+) -> typing.Generator[pathlib.Path, None, None]:
+    """
+    Given one or more source files and source directories, traverse directories
+    and yield files that match the specified file suffix. If no suffixes are
+    provided, _all_ files will be yielded.
+
+    Args:
+        sources: List of path objects to traverse. Can also directly include
+            files, and they will be considered for return.
+        suffixes: List of suffixes to accept from discovered files. If value is
+            None or an empty list (or in general falsey), then all discovered
+            files will be returned.
+        recurse: If True, directories in `sources` will be recursed in their
+            entirety to discover files. If False, directories will only have
+            their immediate contents considered.
+        sort: If True, will yield the discovered files in sorted alphabetical
+            order. Unfortunately this comes at the cost of efficiency, as all
+            files paths will need to be discovered and collected _before_ this
+            function can yield any results.
+        prevent_duplicates: If True, all discovered files will be screened
+            for uniqueness and every unique file should only be yielded a single
+            time by the generator, even with overlapping directory trees.
+            Warning, this may cause issues with complex symlinks and may result
+            in increased memory usage for directory trees with large numbers of
+            files.
+    """
+    # If sorting is requested, yield from self via a sorted function
+    if sort:
+        yield from sorted(
+            find_files_by_suffix(sources, suffixes=suffixes, sort=False)
+        )
+        return
+
+    # If no suffixes were given, we default to yielding all files
+    all_files = not suffixes
+
+    # Track a set of the yielded files so we don't yield duplicates
+    yielded_files: set[pathlib.Path] = set()
+
+    for source in sources:
+        # If the source is a file itself, we can consider it for yielding
+        if source.is_file():
+            if all_files or source.suffix in suffixes:
+                if prevent_duplicates:
+                    resolved_source = source.resolve()
+                    if resolved_source not in yielded_files:
+                        yielded_files.add(resolved_source)
+                        yield source
+                else:
+                    yield source
+
+        # Else if recursion is requested, we're going to walk the directory tree
+        # for files
+        elif recurse:
+            for *_, sub_files in walk(source):
+                for file in sub_files:
+                    if all_files or file.suffix in suffixes:
+                        if prevent_duplicates:
+                            resolved_file = file.resolve()
+                            if resolved_file not in yielded_files:
+                                yielded_files.add(resolved_file)
+                                yield file
+                        else:
+                            yield file
+
+        # Else, we'll simply iterate through the directory's contents
+        else:
+            for path in source.iterdir():
+                if path.is_file() and (all_files or path.suffix in suffixes):
+                    if prevent_duplicates:
+                        resolved_path = path.resolve()
+                        if resolved_path not in yielded_files:
+                            yielded_files.add(resolved_path)
+                            yield path
+                    else:
+                        yield path
